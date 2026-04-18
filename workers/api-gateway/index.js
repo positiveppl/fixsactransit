@@ -53,6 +53,11 @@ export default {
       return handleStatus(env);
     }
 
+    if (path === "/api/debug/sacramento") {
+      const raw = await env.TRANSIT_KV.get("city:sacramento");
+      return json({ raw_length: raw?.length, preview: raw?.slice(0, 200) });
+    }
+
     return json({ error: "Not found", available: ["/api/scores", "/api/live/:cityId", "/api/status"] }, 404);
   },
 };

@@ -1,219 +1,240 @@
-// workers/pain-factor-cron/index.js
-// ── Runs every 6 hours ────────────────────────────────────────────────────────
-// Calls OpenTripPlanner (self-hosted on Oracle Cloud free tier) for each city,
-// computes real transit vs drive pain factor, writes to KV.
-// Zero API cost — OTP is free and open source.
+// workers/gtfs-score-cron/index.js
+// ── Runs daily at 6am UTC ─────────────────────────────────────────────────────
+// 1. Downloads each city's GTFS static zip
+// 2. Computes frequency + coverage scores
+// 3. Builds chunked graph and writes to KV for routing
 
-import { CITIES, BOUNDS, normalize, computeScore } from "../../shared/cities.js";
+import { CITIES, BOUNDS, normalize } from '../../shared/cities.js';
+import { buildAndStoreGraph, parseCSV, parseCSVSafe, extractFileFromZip } from '../../shared/graph-builder.js';
 
 export default {
   async scheduled(event, env, ctx) {
-    console.log("pain-factor-cron: starting", new Date().toISOString());
-
-    const otpBase = env.OTP_URL;
-    if (!otpBase) {
-      console.error("OTP_URL not set — run: wrangler secret put OTP_URL");
-      return;
-    }
-
-    const healthy = await checkOTPHealth(otpBase);
-    if (!healthy) {
-      console.error("OTP health check failed — aborting run");
-      await env.TRANSIT_KV.put("pain:last_error", JSON.stringify({
-        error: "OTP unreachable",
-        at: new Date().toISOString(),
-      }));
-      return;
-    }
+    console.log('gtfs-score-cron: starting', new Date().toISOString());
 
     const results = [];
 
     for (const city of CITIES) {
       try {
-        console.log(`Computing pain factor: ${city.name}`);
-        const pain = await computePainFactor(city, otpBase);
+        console.log(`Processing: ${city.name}`);
 
-        const existing = await env.TRANSIT_KV.get(`city:${city.id}`, "json") || {};
+        // Fetch GTFS zip once — reuse for both scoring and graph building
+        const zip = await fetchGTFSZip(city.gtfs_static);
+
+        // 1. Compute frequency + coverage scores
+        const scores = await processCityGTFS(zip);
+
+        // 2. Build and store chunked routing graph
+        console.log(`Building graph: ${city.name}`);
+        const graphStats = await buildAndStoreGraph(city.id, zip, env.TRANSIT_KV);
+        console.log(`Graph built: ${city.name}`, graphStats);
+
+        // 3. Merge with existing pain data in KV
+        const existing = await env.TRANSIT_KV.get(`city:${city.id}`, 'json') || {};
 
         const record = {
           ...existing,
-          id: city.id,
-          name: city.name,
-          state: city.state,
-          rail_feed: city.rail_feed,
-          pain_factor: pain.ratio,
-          transit_minutes: pain.transit_minutes,
-          drive_minutes: pain.drive_minutes,
-          walk_minutes: pain.walk_minutes,
-          wait_minutes: pain.wait_minutes,
-          transfers: pain.transfers,
-          route_summary: pain.route_summary,
-          pain_score: normalize(pain.ratio, BOUNDS.pain, "lower_better"),
-          pain_computed_at: new Date().toISOString(),
+          id:                   city.id,
+          name:                 city.name,
+          state:                city.state,
+          rail_feed:            city.rail_feed,
+          frequency_score:      scores.frequency_score,
+          coverage_score:       scores.coverage_score,
+          avg_headway_minutes:  scores.avg_headway_minutes,
+          coverage_pct:         scores.coverage_pct,
+          stop_count:           scores.stop_count,
+          graph_chunks:         graphStats.chunk_count,
+          graph_edges:          graphStats.edge_count,
+          gtfs_computed_at:     new Date().toISOString(),
         };
 
-        if (existing.avg_headway_minutes != null && existing.coverage_pct != null) {
-          record.score = computeScore(
-            existing.avg_headway_minutes,
-            existing.coverage_pct,
-            pain.ratio,
-          );
-        }
-
         await env.TRANSIT_KV.put(`city:${city.id}`, JSON.stringify(record));
-        results.push({ city: city.id, status: "ok", ...pain });
-        await sleep(500);
+        results.push({ city: city.id, status: 'ok', ...scores, ...graphStats });
 
       } catch (err) {
         console.error(`Failed: ${city.name}`, err.message);
-        results.push({ city: city.id, status: "error", error: err.message });
+        results.push({ city: city.id, status: 'error', error: err.message });
       }
     }
 
-    await env.TRANSIT_KV.put("pain:last_run", JSON.stringify({
+    await env.TRANSIT_KV.put('index:last_run', JSON.stringify({
       ran_at: new Date().toISOString(),
       results,
     }));
 
-    console.log("pain-factor-cron: done");
+    console.log('gtfs-score-cron: done', results);
   },
 
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/run') {
+      const cityId = url.searchParams.get('city');
+      const citiesToRun = cityId
+        ? CITIES.filter(c => c.id === cityId)
+        : CITIES;
 
-    if (url.pathname === "/run") {
-      await this.scheduled({}, env, {});
-      return new Response(JSON.stringify({ status: "done" }), {
-        headers: { "Content-Type": "application/json" },
+      const results = [];
+      for (const city of citiesToRun) {
+        try {
+          console.log(`Processing: ${city.name}`);
+          const zip = await fetchGTFSZip(city.gtfs_static);
+          const scores = await processCityGTFS(zip);
+          const existing = await env.TRANSIT_KV.get(`city:${city.id}`, 'json') || {};
+          const record = {
+            ...existing,
+            id: city.id,
+            name: city.name,
+            state: city.state,
+            rail_feed: city.rail_feed,
+            frequency_score: scores.frequency_score,
+            coverage_score: scores.coverage_score,
+            avg_headway_minutes: scores.avg_headway_minutes,
+            coverage_pct: scores.coverage_pct,
+            stop_count: scores.stop_count,
+            gtfs_computed_at: new Date().toISOString(),
+          };
+          await env.TRANSIT_KV.put(`city:${city.id}`, JSON.stringify(record));
+          results.push({ city: city.id, status: 'ok', ...scores });
+        } catch (err) {
+          results.push({ city: city.id, status: 'error', error: err.message });
+        }
+      }
+
+      return new Response(JSON.stringify({ status: 'done', results }, null, 2), {
+        headers: { 'Content-Type': 'application/json' },
       });
     }
-
-    if (url.pathname === "/health") {
-      const otpBase = env.OTP_URL;
-      const healthy = otpBase ? await checkOTPHealth(otpBase) : false;
-      return new Response(JSON.stringify({
-        otp_healthy: healthy,
-        otp_url: otpBase ? otpBase.replace(/\/\/.*@/, "//[REDACTED]@") : "not set",
-      }), { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (url.pathname.startsWith("/test/")) {
-      const cityId = url.pathname.split("/")[2];
-      const city = CITIES.find(c => c.id === cityId);
-      if (!city) return new Response("City not found", { status: 404 });
-      const pain = await computePainFactor(city, env.OTP_URL);
-      return new Response(JSON.stringify(pain, null, 2), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response(
-      "pain-factor-cron (OTP)\n\nEndpoints:\n  /run\n  /health\n  /test/:cityId"
-    );
+    return new Response('gtfs-score-cron — /run?city=sacramento');
   },
 };
 
-// ── OTP Health Check ──────────────────────────────────────────────────────────
+// ── GTFS Scoring ──────────────────────────────────────────────────────────────
 
-async function checkOTPHealth(otpBase) {
-  try {
-    const res = await fetch(`${otpBase}/otp/routers/default/index/feeds`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-// ── Pain Factor via OTP ───────────────────────────────────────────────────────
-
-async function computePainFactor(city, otpBase) {
-  const [oLat, oLon] = city.trip.origin.split(",");
-  const [dLat, dLon] = city.trip.destination.split(",");
-  const departureTime = getNextWeekday8am();
-
-  const [transitPlan, drivePlan] = await Promise.all([
-    fetchOTPPlan({ otpBase, fromLat: oLat, fromLon: oLon, toLat: dLat, toLon: dLon,
-                   time: departureTime, mode: "TRANSIT,WALK" }),
-    fetchOTPPlan({ otpBase, fromLat: oLat, fromLon: oLon, toLat: dLat, toLon: dLon,
-                   time: departureTime, mode: "CAR" }),
+async function processCityGTFS(zip) {
+  const [stopTimes, stops, trips, calendar] = await Promise.all([
+    parseCSV(zip, 'stop_times.txt'),
+    parseCSV(zip, 'stops.txt'),
+    parseCSV(zip, 'trips.txt'),
+    parseCSVSafe(zip, 'calendar.txt'),
   ]);
 
-  const transitItinerary = transitPlan?.plan?.itineraries?.[0];
-  const driveItinerary   = drivePlan?.plan?.itineraries?.[0];
-
-  if (!transitItinerary || !driveItinerary) {
-    throw new Error(`OTP returned no itinerary for ${city.id}`);
-  }
-
-  const transitMinutes = Math.round(transitItinerary.duration / 60);
-  const driveMinutes   = Math.round(driveItinerary.duration / 60);
-  const ratio          = Math.round((transitMinutes / driveMinutes) * 10) / 10;
-
-  const legs        = transitItinerary.legs || [];
-  const walkLegs    = legs.filter(l => l.mode === "WALK");
-  const walkMinutes = Math.round(walkLegs.reduce((s, l) => s + l.duration, 0) / 60);
-  const waitMinutes = Math.round((transitItinerary.waitingTime || 0) / 60);
-  const transfers   = transitItinerary.transfers || 0;
+  const frequency = computeFrequency(stopTimes, trips, calendar);
+  const coverage  = computeCoverage(stops);
 
   return {
-    transit_minutes: transitMinutes,
-    drive_minutes:   driveMinutes,
-    walk_minutes:    walkMinutes,
-    wait_minutes:    waitMinutes,
-    transfers,
-    ratio,
-    route_summary: buildRouteSummary(legs),
+    avg_headway_minutes:  frequency.avg_headway,
+    peak_headway_minutes: frequency.peak_headway,
+    frequency_score:      normalize(frequency.avg_headway, { best: 5, worst: 60 }, 'lower_better'),
+    coverage_pct:         coverage.pct,
+    stop_count:           coverage.stop_count,
+    coverage_score:       normalize(coverage.pct, { best: 90, worst: 20 }, 'higher_better'),
   };
 }
 
-async function fetchOTPPlan({ otpBase, fromLat, fromLon, toLat, toLon, time, mode }) {
-  const params = new URLSearchParams({
-    fromPlace: `${fromLat},${fromLon}`,
-    toPlace:   `${toLat},${toLon}`,
-    time:      formatTime(time),
-    date:      formatDate(time),
-    mode,
-    numItineraries: "1",
-    maxWalkDistance: "1500",
+function computeFrequency(stopTimes, trips, calendar) {
+  const weekdayServices = new Set(
+    (calendar || [])
+      .filter(r => r.monday === '1' || r.tuesday === '1' || r.wednesday === '1')
+      .map(r => r.service_id)
+  );
+
+  const tripService = {};
+  trips.forEach(t => { tripService[t.trip_id] = t.service_id; });
+
+  const peakArrivals = {};
+
+  stopTimes.forEach(st => {
+    const serviceId = tripService[st.trip_id];
+    if (calendar && !weekdayServices.has(serviceId)) return;
+
+    const secs = timeToSeconds(st.arrival_time);
+    const inAMPeak = secs >= 7 * 3600 && secs <= 9 * 3600;
+    const inPMPeak = secs >= 16 * 3600 && secs <= 19 * 3600;
+    if (!inAMPeak && !inPMPeak) return;
+
+    if (!peakArrivals[st.stop_id]) peakArrivals[st.stop_id] = [];
+    peakArrivals[st.stop_id].push(secs);
   });
 
-  const res = await fetch(`${otpBase}/otp/routers/default/plan?${params}`, {
-    signal: AbortSignal.timeout(30000),
+  const headways = [];
+  Object.values(peakArrivals).forEach(arrivals => {
+    if (arrivals.length < 2) return;
+    arrivals.sort((a, b) => a - b);
+    const gaps = [];
+    for (let i = 1; i < arrivals.length; i++) {
+      const gap = (arrivals[i] - arrivals[i - 1]) / 60;
+      if (gap > 0 && gap < 120) gaps.push(gap);
+    }
+    if (gaps.length) headways.push(gaps.reduce((a, b) => a + b, 0) / gaps.length);
   });
 
-  if (!res.ok) throw new Error(`OTP plan failed: ${res.status}`);
-  return res.json();
+  if (!headways.length) return { avg_headway: 60, peak_headway: 60 };
+
+  return {
+    avg_headway:  Math.round((headways.reduce((a, b) => a + b, 0) / headways.length) * 10) / 10,
+    peak_headway: Math.round(Math.min(...headways) * 10) / 10,
+  };
 }
 
-function buildRouteSummary(legs) {
-  return legs
-    .filter(l => l.mode !== "WALK" || l.duration > 60)
-    .map(l => {
-      if (l.mode === "WALK") return `Walk ${Math.round(l.duration / 60)}m`;
-      return `${l.mode} ${l.route || l.routeShortName || ""} (${Math.round(l.duration / 60)}m)`.trim();
-    })
-    .join(" → ");
-}
+function computeCoverage(stops) {
+  if (!stops.length) return { pct: 0, stop_count: 0 };
 
-function getNextWeekday8am() {
-  const d = new Date();
-  d.setUTCHours(8, 0, 0, 0);
-  while (d.getUTCDay() === 0 || d.getUTCDay() === 6 || d <= new Date()) {
-    d.setUTCDate(d.getUTCDate() + 1);
+  const lats = stops.map(s => parseFloat(s.stop_lat)).filter(Boolean);
+  const lons = stops.map(s => parseFloat(s.stop_lon)).filter(Boolean);
+
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+
+  const GRID_STEPS  = 40;
+  const RADIUS_KM   = 0.4;
+  const latStep = (maxLat - minLat) / GRID_STEPS;
+  const lonStep = (maxLon - minLon) / GRID_STEPS;
+
+  let covered = 0, total = 0;
+
+  for (let i = 0; i <= GRID_STEPS; i++) {
+    for (let j = 0; j <= GRID_STEPS; j++) {
+      const lat = minLat + i * latStep;
+      const lon = minLon + j * lonStep;
+      total++;
+      const isNear = stops.some(stop => {
+        const d = haversineKm(lat, lon, parseFloat(stop.stop_lat), parseFloat(stop.stop_lon));
+        return d <= RADIUS_KM;
+      });
+      if (isNear) covered++;
+    }
   }
-  return d;
+
+  return {
+    pct:        Math.round((covered / total) * 1000) / 10,
+    stop_count: stops.length,
+  };
 }
 
-function formatTime(date) {
-  return date.toUTCString().split(" ")[4];
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+function timeToSeconds(timeStr) {
+  if (!timeStr) return 0;
+  const [h, m, s] = timeStr.split(':').map(Number);
+  return h * 3600 + m * 60 + (s || 0);
 }
 
-function formatDate(date) {
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  return `${m}-${d}-${date.getUTCFullYear()}`;
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function fetchGTFSZip(url) {
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'fixsactransit.org/1.0' },
+    cf: { cacheTtl: 3600 },
+  });
+  if (!res.ok) throw new Error(`GTFS fetch failed: ${res.status} ${url}`);
+  return res.arrayBuffer();
+}

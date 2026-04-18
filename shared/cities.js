@@ -166,7 +166,7 @@ export const CITIES = [
     id: "sacramento",
     name: "Sacramento",
     state: "CA",
-    gtfs_static: "https://www.sacrt.com/googletransit/googlegtfs.zip",
+    gtfs_static: "http://iportal.sacrt.com/GTFS/SRTD/google_transit.zip",
     gtfs_rt: "https://api.goswift.ly/real-time/sacrt/gtfs-rt-vehicle-position",
     rt_key_env: "SACRT_KEY",
     // The point of the whole project
@@ -189,9 +189,9 @@ export const WEIGHTS = {
 // ── Normalization bounds ──────────────────────────────────────────────────────
 export const BOUNDS = {
   // headway: lower is better (5min = excellent, 60min = terrible)
-  headway:  { best: 5,  worst: 60 },
+  headway:  { best: 5,  worst: 45 },
   // coverage: higher is better (90% = excellent, 20% = terrible)
-  coverage: { best: 90, worst: 20 },
+  coverage: { best: 90, worst: 10 },
   // pain factor: lower is better (1x = same as driving, 8x = terrible)
   pain:     { best: 1,  worst: 8  },
 };
