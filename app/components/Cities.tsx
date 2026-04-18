@@ -8,7 +8,15 @@ interface CitiesProps {
 
 export default function Cities({ cities }: CitiesProps) {
   const [animated, setAnimated] = useState(false)
+  const [mobile, setMobile] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const check = () => setMobile(window.innerWidth < 640)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     const obs = new IntersectionObserver(
@@ -18,14 +26,6 @@ export default function Cities({ cities }: CitiesProps) {
     if (ref.current) obs.observe(ref.current)
     return () => obs.disconnect()
   }, [])
-
-const [mobile, setMobile] = useState(false)
-useEffect(() => {
-  const check = () => setMobile(window.innerWidth < 640)
-  check()
-  window.addEventListener('resize', check)
-  return () => window.removeEventListener('resize', check)
-}, [])
 
   // Sort: scored cities desc, then unscored
   const sorted = [...cities].sort((a, b) => {
@@ -40,11 +40,14 @@ useEffect(() => {
     10
   )
 
+  const cols = mobile ? '1fr 52px' : '2fr 1fr 80px 80px 80px 80px'
+  const headers = mobile ? ['City', 'Score'] : ['City', 'Score', 'Freq', 'Cover', 'Pain', 'Transit']
+
   return (
-    <section id="cities" className="py-24 px-5" style={{ background: '#ffffff' }}>
-      <div className="max-w-6xl mx-auto">
+    <section id="cities" style={{ background: '#ffffff', padding: mobile ? '64px 16px' : '96px 20px' }}>
+      <div style={{ maxWidth: '72rem', margin: '0 auto' }}>
         {/* Header */}
-        <div className="mb-16">
+        <div style={{ marginBottom: mobile ? 32 : 64 }}>
           <div style={{ fontSize: 11, letterSpacing: '0.22em', color: '#bbbbbb', textTransform: 'uppercase', marginBottom: 12, fontFamily: 'JetBrains Mono, monospace' }}>
             Live rankings
           </div>
@@ -52,7 +55,7 @@ useEffect(() => {
             style={{
               fontFamily: "'rb-freigeist-neue', 'Arial Black', ui-sans-serif",
               fontWeight: 700,
-              fontSize: 'clamp(40px, 6vw, 72px)',
+              fontSize: 'clamp(32px, 6vw, 72px)',
               lineHeight: 0.9,
               letterSpacing: '-0.02em',
               color: '#202020',
@@ -61,7 +64,7 @@ useEffect(() => {
             Transit Quality<br />
             <span style={{ color: '#ea2804' }}>12 Cities</span>
           </h2>
-          <p style={{ fontSize: 16, color: '#646464', marginTop: 16, maxWidth: 480, lineHeight: 1.6 }}>
+          <p style={{ fontSize: mobile ? 14 : 16, color: '#646464', marginTop: 16, maxWidth: 480, lineHeight: 1.6 }}>
             Score = frequency (40%) + coverage (30%) + pain ratio (30%). Live from GTFS feeds.
           </p>
         </div>
@@ -72,14 +75,14 @@ useEffect(() => {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '2fr 1fr 80px 80px 80px 80px',
-              gap: 8,
-              padding: '8px 16px',
+              gridTemplateColumns: cols,
+              gap: mobile ? 4 : 8,
+              padding: '8px 12px',
               borderBottom: '1px solid #e5e5e5',
               marginBottom: 4,
             }}
           >
-            {['City', 'Score', 'Freq', 'Cover', 'Pain', 'Transit'].map(h => (
+            {headers.map(h => (
               <div key={h} style={{ fontSize: 9, letterSpacing: '0.18em', color: '#bbbbbb', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace' }}>
                 {h}
               </div>
@@ -97,9 +100,9 @@ useEffect(() => {
                 key={city.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '2fr 1fr 80px 80px 80px 80px',
-                  gap: 8,
-                  padding: '14px 16px',
+                  gridTemplateColumns: cols,
+                  gap: mobile ? 4 : 8,
+                  padding: mobile ? '12px' : '14px 16px',
                   borderBottom: '1px solid #f0f0f0',
                   background: isSac ? 'rgba(234,40,4,0.03)' : 'transparent',
                   borderLeft: isSac ? '3px solid #ea2804' : '3px solid transparent',
@@ -108,9 +111,9 @@ useEffect(() => {
               >
                 {/* City name + bar */}
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
                     <span style={{
-                      fontSize: 15,
+                      fontSize: mobile ? 13 : 15,
                       fontWeight: isSac ? 700 : 500,
                       color: isSac ? '#ea2804' : '#202020',
                       letterSpacing: '-0.01em',
@@ -167,7 +170,7 @@ useEffect(() => {
                     <span style={{
                       fontFamily: "'rb-freigeist-neue', 'Arial Black', ui-sans-serif",
                       fontWeight: 700,
-                      fontSize: 28,
+                      fontSize: mobile ? 20 : 28,
                       color: isSac ? '#ea2804' : '#202020',
                       letterSpacing: '-0.01em',
                     }}>
@@ -178,18 +181,17 @@ useEffect(() => {
                   )}
                 </div>
 
-                {/* Freq */}
-                <Metric val={city.frequency_score} isSac={isSac} />
-                {/* Cover */}
-                <Metric val={city.coverage_score} isSac={isSac} />
-                {/* Pain */}
-                <Metric val={city.pain_factor} isSac={isSac} suffix="×" invert />
-                {/* Transit time */}
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: city.transit_minutes ? '#646464' : '#e0e0e0', fontFamily: 'JetBrains Mono, monospace' }}>
-                    {city.transit_minutes ? `${city.transit_minutes}m` : '—'}
-                  </span>
-                </div>
+                {/* Desktop-only columns */}
+                {!mobile && <Metric val={city.frequency_score} isSac={isSac} />}
+                {!mobile && <Metric val={city.coverage_score} isSac={isSac} />}
+                {!mobile && <Metric val={city.pain_factor} isSac={isSac} suffix="×" invert />}
+                {!mobile && (
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: city.transit_minutes ? '#646464' : '#e0e0e0', fontFamily: 'JetBrains Mono, monospace' }}>
+                      {city.transit_minutes ? `${city.transit_minutes}m` : '—'}
+                    </span>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -212,7 +214,6 @@ function Metric({ val, isSac, suffix = '', invert = false }: {
   if (val === null) {
     return <div style={{ display: 'flex', alignItems: 'center' }}><span style={{ fontSize: 12, color: '#e0e0e0' }}>—</span></div>
   }
-  // For pain factor: high is bad (red), low is good (green)
   const isHigh = invert ? val >= 5 : val >= 7
   const isMid = invert ? val >= 3 : val >= 4
   const color = isSac && invert ? '#ea2804' : isHigh && invert ? '#ea2804' : isMid ? '#646464' : '#2b9a66'
