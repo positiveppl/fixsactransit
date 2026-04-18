@@ -19,6 +19,14 @@ export default function Cities({ cities }: CitiesProps) {
     return () => obs.disconnect()
   }, [])
 
+const [mobile, setMobile] = useState(false)
+useEffect(() => {
+  const check = () => setMobile(window.innerWidth < 640)
+  check()
+  window.addEventListener('resize', check)
+  return () => window.removeEventListener('resize', check)
+}, [])
+
   // Sort: scored cities desc, then unscored
   const sorted = [...cities].sort((a, b) => {
     if (!a.score && !b.score) return 0

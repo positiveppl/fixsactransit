@@ -4,7 +4,7 @@ export default function Nav() {
   return (
     <nav style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '16px 32px', borderBottom: '1px solid #e5e5e5',
+      padding: 'clamp(12px, 4vw, 16px) clamp(16px, 4vw, 32px)', borderBottom: '1px solid #e5e5e5',
       position: 'sticky', top: 0, background: '#ffffff', zIndex: 50,
     }}>
       <div style={{ fontFamily: 'Arial Black, Impact, ui-sans-serif', fontSize: 15, fontWeight: 900, letterSpacing: '0.06em', color: '#202020', textTransform: 'uppercase' }}>
