@@ -1,0 +1,49 @@
+# fixsactransit — Cloudflare Workers Pipeline
+# Run `wrangler kv:namespace create TRANSIT_KV` to get your namespace IDs
+# then replace the placeholder IDs below
+
+# ── WORKER 1: GTFS Score Cron ─────────────────────────────────────────────────
+[[workers]]
+name = "gtfs-score-cron"
+main = "workers/gtfs-score-cron/index.js"
+compatibility_date = "2024-01-01"
+
+[[workers.triggers.crons]]
+crons = ["0 6 * * *"]  # Daily at 6am UTC
+
+[[workers.kv_namespaces]]
+binding = "TRANSIT_KV"
+id = "REPLACE_WITH_YOUR_KV_ID"
+preview_id = "REPLACE_WITH_YOUR_PREVIEW_KV_ID"
+
+# ── WORKER 2: Pain Factor Cron ────────────────────────────────────────────────
+[[workers]]
+name = "pain-factor-cron"
+main = "workers/pain-factor-cron/index.js"
+compatibility_date = "2024-01-01"
+
+[[workers.triggers.crons]]
+crons = ["0 */6 * * *"]  # Every 6 hours
+
+[[workers.kv_namespaces]]
+binding = "TRANSIT_KV"
+id = "REPLACE_WITH_YOUR_KV_ID"
+preview_id = "REPLACE_WITH_YOUR_PREVIEW_KV_ID"
+
+[workers.vars]
+MAPBOX_TOKEN = ""  # Set via: wrangler secret put MAPBOX_TOKEN
+
+# ── WORKER 3: API Gateway ─────────────────────────────────────────────────────
+[[workers]]
+name = "api-gateway"
+main = "workers/api-gateway/index.js"
+compatibility_date = "2024-01-01"
+
+[[workers.routes]]
+pattern = "fixsactransit.org/api/*"
+zone_name = "fixsactransit.org"
+
+[[workers.kv_namespaces]]
+binding = "TRANSIT_KV"
+id = "REPLACE_WITH_YOUR_KV_ID"
+preview_id = "REPLACE_WITH_YOUR_PREVIEW_KV_ID"
