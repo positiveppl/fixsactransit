@@ -7,6 +7,7 @@ import CodeBlock from './components/CodeBlock'
 import Sidebar from './components/Sidebar'
 import TripPlanner from './components/TripPlanner'
 import Manifesto from './components/Manifesto'
+import { ContentGrid } from './components/ResponsiveGrid'
 
 export const revalidate = 300
 
@@ -27,16 +28,13 @@ export default async function Page() {
       <Nav />
       <Hero sac={sac} />
       <StatStrip sac={sac} />
-
-      {/* Main content: canvas + code left, sidebar right */}
-      <div className="content-grid" style={{ maxWidth: 1200, margin: '0 auto', padding: '64px 32px', display: 'grid', gridTemplateColumns: '1fr 380px', gap: 48 }}>
+      <ContentGrid>
         <div>
           <TransitCanvas />
           <CodeBlock sac={sac} />
         </div>
         <Sidebar sac={sac} allCities={cities} />
-      </div>
-
+      </ContentGrid>
       <TripPlanner sac={sac} />
       <Manifesto />
     </main>

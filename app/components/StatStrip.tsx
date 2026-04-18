@@ -1,7 +1,17 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { CityScore, fmtMin } from '../lib/api'
 
 export default function StatStrip({ sac }: { sac: CityScore | null }) {
+  const [mobile, setMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setMobile(window.innerWidth < 560)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   const stats = [
     { label: 'Pain Factor', value: `${sac?.pain_factor ?? 6.6}×`, color: '#ea2804', sub: 'slower than driving' },
     { label: 'Transit Time', value: fmtMin(sac?.transit_minutes ?? 100), color: '#202020', sub: `${sac?.transfers ?? 1} transfer · ${sac?.walk_minutes ?? 11} min walk` },
@@ -10,19 +20,21 @@ export default function StatStrip({ sac }: { sac: CityScore | null }) {
   ]
 
   return (
-    <div className="stat-strip-grid" style={{
-      display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(4, 1fr)',
       borderBottom: '1px solid #e5e5e5',
     }}>
       {stats.map((s, i) => (
         <div key={s.label} style={{
-          padding: '28px 32px',
-          borderRight: i < stats.length - 1 ? '1px solid #e5e5e5' : 'none',
+          padding: mobile ? '18px 16px' : '28px 32px',
+          borderRight: (mobile ? i % 2 === 0 : i < stats.length - 1) ? '1px solid #e5e5e5' : 'none',
+          borderBottom: mobile && i < 2 ? '1px solid #e5e5e5' : 'none',
         }}>
           <div style={{ fontSize: 11, color: '#8d8d8d', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' }}>
             {s.label}
           </div>
-          <div style={{ fontFamily: 'Arial Black, Impact, ui-sans-serif', fontSize: 'clamp(32px, 4vw, 52px)', fontWeight: 900, lineHeight: 1, color: s.color }}>
+          <div style={{ fontFamily: 'Arial Black, Impact, ui-sans-serif', fontSize: mobile ? 28 : 'clamp(32px, 4vw, 52px)', fontWeight: 900, lineHeight: 1, color: s.color }}>
             {s.value}
           </div>
           <div style={{ fontSize: 12, color: '#8d8d8d', marginTop: 6 }}>{s.sub}</div>

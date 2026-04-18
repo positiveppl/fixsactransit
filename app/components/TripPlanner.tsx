@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CityScore, fmtMin } from '../lib/api'
 
 const DEFAULT_STEPS = [
@@ -15,6 +15,14 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+  const [mobile, setMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setMobile(window.innerWidth < 900)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const pain = sac?.pain_factor ?? 6.6
 
@@ -37,19 +45,24 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
   }
 
   return (
-    <section id="trip-planner" style={{ background: '#202020', padding: '80px 32px' }}>
-      <div className="trip-planner-grid" style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 48, alignItems: 'start' }}>
+    <section id="trip-planner" style={{ background: '#202020', padding: mobile ? '60px 20px' : '80px 32px' }}>
+      <div style={{
+        maxWidth: 1200, margin: '0 auto',
+        display: 'grid',
+        gridTemplateColumns: mobile ? '1fr' : '1fr 1fr',
+        gap: mobile ? 32 : 48,
+        alignItems: 'start',
+      }}>
 
         {/* Form */}
         <div>
           <div style={{ fontSize: 11, letterSpacing: '0.2em', color: '#646464', textTransform: 'uppercase', marginBottom: 12, fontFamily: 'JetBrains Mono, monospace' }}>
             Calculate your pain ratio
           </div>
-          <h2 style={{ fontFamily: 'Arial Black, Impact, ui-sans-serif', fontSize: 'clamp(40px, 6vw, 64px)', fontWeight: 900, lineHeight: 0.9, letterSpacing: '-0.02em', color: '#fff', marginBottom: 36, textTransform: 'uppercase' }}>
+          <h2 style={{ fontFamily: 'Arial Black, Impact, ui-sans-serif', fontSize: mobile ? 40 : 'clamp(40px, 6vw, 64px)', fontWeight: 900, lineHeight: 0.9, letterSpacing: '-0.02em', color: '#fff', marginBottom: 36, textTransform: 'uppercase' }}>
             YOUR<br /><span style={{ color: '#ea2804' }}>COMMUTE</span>
           </h2>
 
-          {/* Origin */}
           <div style={{ marginBottom: 8 }}>
             <label style={{ fontSize: 9, letterSpacing: '0.2em', color: '#646464', textTransform: 'uppercase', display: 'block', marginBottom: 5, fontFamily: 'JetBrains Mono, monospace' }}>From</label>
             <div style={{ position: 'relative' }}>
@@ -58,12 +71,10 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
             </div>
           </div>
 
-          {/* Swap */}
           <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
             <button onClick={() => { setOrigin(dest); setDest(origin) }} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 9999, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: 13 }}>⇅</button>
           </div>
 
-          {/* Dest */}
           <div style={{ marginBottom: 18 }}>
             <label style={{ fontSize: 9, letterSpacing: '0.2em', color: '#646464', textTransform: 'uppercase', display: 'block', marginBottom: 5, fontFamily: 'JetBrains Mono, monospace' }}>To</label>
             <div style={{ position: 'relative' }}>
@@ -74,7 +85,7 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
 
           {error && <div style={{ fontSize: 11, color: '#ea2804', marginBottom: 10, fontFamily: 'JetBrains Mono, monospace' }}>{error}</div>}
 
-          <button onClick={calculate} disabled={loading} style={{ width: '100%', background: loading ? 'rgba(234,40,4,0.5)' : '#ea2804', color: '#fff', border: 'none', borderRadius: 9999, fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, letterSpacing: '0.15em', textTransform: 'uppercase', padding: '14px', cursor: loading ? 'not-allowed' : 'pointer', outline: '3px solid rgba(234,40,4,0.3)', outlineOffset: 2 }}>
+          <button onClick={calculate} disabled={loading} style={{ width: '100%', background: loading ? 'rgba(234,40,4,0.5)' : '#ea2804', color: '#fff', border: 'none', borderRadius: 9999, fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, letterSpacing: '0.15em', textTransform: 'uppercase', padding: '14px', cursor: loading ? 'not-allowed' : 'pointer' }}>
             {loading ? 'Routing...' : 'Calculate Pain Ratio'}
           </button>
 
@@ -87,7 +98,6 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
 
         {/* Result card */}
         <div style={{ opacity: done ? 1 : 0.25, transition: 'opacity 0.4s', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, overflow: 'hidden' }}>
-          {/* Head */}
           <div style={{ background: 'rgba(255,255,255,0.05)', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: '#646464', letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace' }}>
               {origin.split(',')[0]} → {dest.split(',')[0]}
@@ -95,13 +105,11 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
             <div style={{ background: '#ea2804', color: '#fff', fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 10px', borderRadius: 9999 }}>Live</div>
           </div>
 
-          {/* Pain */}
           <div style={{ padding: '24px 24px 8px' }}>
             <div style={{ fontFamily: 'Arial Black, Impact, ui-sans-serif', fontSize: 88, fontWeight: 900, lineHeight: 0.85, color: '#ea2804' }}>{pain}×</div>
             <div style={{ fontSize: 10, letterSpacing: '0.2em', color: '#646464', textTransform: 'uppercase', marginTop: 10, fontFamily: 'JetBrains Mono, monospace' }}>Times slower than driving</div>
           </div>
 
-          {/* Times */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             <div style={{ padding: '14px 24px', borderRight: '1px solid rgba(255,255,255,0.08)' }}>
               <div style={{ fontSize: 9, letterSpacing: '0.15em', color: '#646464', textTransform: 'uppercase', marginBottom: 4, fontFamily: 'JetBrains Mono, monospace' }}>By Transit</div>
@@ -113,7 +121,6 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
             </div>
           </div>
 
-          {/* Wait bar */}
           <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             <div style={{ height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 9999, marginBottom: 8 }}>
               <div style={{ height: '100%', background: '#ea2804', borderRadius: 9999, width: done ? `${sac?.wait_pct ?? 41}%` : '0%', transition: 'width 1.5s cubic-bezier(0.16,1,0.3,1)' }} />
@@ -123,7 +130,6 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
             </div>
           </div>
 
-          {/* Steps */}
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '14px 24px' }}>
             {DEFAULT_STEPS.map((s, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: i < DEFAULT_STEPS.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', fontSize: 11, color: s.type === 'wait' ? '#ea2804' : '#8d8d8d', fontFamily: 'JetBrains Mono, monospace' }}>
@@ -134,7 +140,6 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
             ))}
           </div>
 
-          {/* Share */}
           {done && (
             <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: 10 }}>
               <button onClick={shareOnX} style={{ flex: 1, background: '#ea2804', color: '#fff', border: 'none', borderRadius: 9999, padding: '11px 16px', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace' }}>Share on X</button>
