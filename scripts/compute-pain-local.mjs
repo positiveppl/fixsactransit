@@ -27,5 +27,5 @@ const result = {
 };
 
 writeFileSync('/tmp/sac-result.json', JSON.stringify(result));
-execSync(`npx wrangler kv key put --namespace-id=${KV_NAMESPACE_ID} "city:sacramento" --path="/tmp/sac-result.json"`, { stdio: 'inherit' });
+execSync(`npx wrangler kv key put --remote --namespace-id=${KV_NAMESPACE_ID} "city:sacramento" --path="/tmp/sac-result.json"`, { stdio: 'inherit' });
 console.log('✅ Done');

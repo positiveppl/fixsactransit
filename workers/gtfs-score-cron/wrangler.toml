@@ -2,9 +2,6 @@ name = "gtfs-score-cron"
 main = "index.js"
 compatibility_date = "2026-04-17"
 
-# [triggers]
-# crons = ["0 6 * * *"]
-
 [[kv_namespaces]]
 binding = "TRANSIT_KV"
 id = "aac52192fcae4d898c2eb6d25ea8f644"

@@ -144,7 +144,7 @@ function kvPut(key, value) {
   const tmpFile = `/tmp/kv-value-${Date.now()}.json`;
   writeFileSync(tmpFile, value);
   execSync(
-    `npx wrangler kv key put --namespace-id=${KV_NAMESPACE_ID} "${key}" --path="${tmpFile}"`,
+    `npx wrangler kv key put --remote --namespace-id=${KV_NAMESPACE_ID} "${key}" --path="${tmpFile}"`,
     { stdio: 'pipe' }
   );
 }
