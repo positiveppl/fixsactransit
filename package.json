@@ -2,8 +2,11 @@
   "name": "fixsactransit",
   "version": "1.0.0",
   "description": "Sacramento transit reality data pipeline — fixsactransit.org",
-  "type": "module",
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
     "deploy:gateway": "wrangler deploy workers/api-gateway/index.js --name api-gateway",
     "deploy:gtfs": "wrangler deploy workers/gtfs-score-cron/index.js --name gtfs-score-cron",
     "deploy:pain": "wrangler deploy workers/pain-factor-cron/index.js --name pain-factor-cron",
@@ -11,7 +14,22 @@
     "kv:create": "wrangler kv:namespace create TRANSIT_KV",
     "kv:create-preview": "wrangler kv:namespace create TRANSIT_KV --preview"
   },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "framer-motion": "^12.38.0",
+    "next": "16.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5",
     "wrangler": "^4.83.0"
   }
 }
