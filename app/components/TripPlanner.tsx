@@ -15,10 +15,11 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
-  const [mobile, setMobile] = useState(false)
+  const [cols, setCols] = useState('1fr 1fr')
+  const mobile = cols === '1fr'
 
   useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 900)
+    const check = () => setCols(window.innerWidth < 900 ? '1fr' : '1fr 1fr')
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)

@@ -3,10 +3,10 @@ import { useEffect, useState } from 'react'
 import { CityScore, fmtMin } from '../lib/api'
 
 export default function StatStrip({ sac }: { sac: CityScore | null }) {
-  const [mobile, setMobile] = useState(false)
+  const [cols, setCols] = useState('repeat(4, 1fr)')
 
   useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 560)
+    const check = () => setCols(window.innerWidth < 560 ? '1fr 1fr' : 'repeat(4, 1fr)')
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
@@ -19,16 +19,14 @@ export default function StatStrip({ sac }: { sac: CityScore | null }) {
     { label: 'Time Waiting', value: `${sac?.wait_pct ?? 41}%`, color: '#202020', sub: 'of the trip is standing still' },
   ]
 
+  const mobile = cols === '1fr 1fr'
+
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(4, 1fr)',
-      borderBottom: '1px solid #e5e5e5',
-    }}>
+    <div style={{ display: 'grid', gridTemplateColumns: cols, borderBottom: '1px solid #e5e5e5' }}>
       {stats.map((s, i) => (
         <div key={s.label} style={{
           padding: mobile ? '18px 16px' : '28px 32px',
-          borderRight: (mobile ? i % 2 === 0 : i < stats.length - 1) ? '1px solid #e5e5e5' : 'none',
+          borderRight: (mobile ? i % 2 === 0 : i < 3) ? '1px solid #e5e5e5' : 'none',
           borderBottom: mobile && i < 2 ? '1px solid #e5e5e5' : 'none',
         }}>
           <div style={{ fontSize: 11, color: '#8d8d8d', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' }}>
