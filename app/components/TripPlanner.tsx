@@ -38,7 +38,7 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
 
   return (
     <section id="trip-planner" style={{ background: '#202020', padding: '80px 32px' }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 48, alignItems: 'start' }}>
+      <div className="trip-planner-grid" style={{ maxWidth: 1200, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 48, alignItems: 'start' }}>
 
         {/* Form */}
         <div>

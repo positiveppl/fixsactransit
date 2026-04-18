@@ -10,7 +10,7 @@ export default function StatStrip({ sac }: { sac: CityScore | null }) {
   ]
 
   return (
-    <div style={{
+    <div className="stat-strip-grid" style={{
       display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
       borderBottom: '1px solid #e5e5e5',
     }}>
