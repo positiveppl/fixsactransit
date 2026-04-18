@@ -29,7 +29,7 @@ export default async function Page() {
       <StatStrip sac={sac} />
 
       {/* Main content: canvas + code left, sidebar right */}
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '64px 32px', display: 'grid', gridTemplateColumns: '1fr 380px', gap: 48 }}>
+      <div className="content-grid" style={{ maxWidth: 1200, margin: '0 auto', padding: '64px 32px', display: 'grid', gridTemplateColumns: '1fr 380px', gap: 48 }}>
         <div>
           <TransitCanvas />
           <CodeBlock sac={sac} />

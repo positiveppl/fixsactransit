@@ -32,3 +32,16 @@ a:hover { text-decoration-color: var(--dark); }
 
 @keyframes blink-anim { 0%,100%{opacity:1} 50%{opacity:0.4} }
 .blink { animation: blink-anim 1s infinite; }
+
+@media (max-width: 900px) {
+  .content-grid {
+    grid-template-columns: 1fr !important;
+    padding: 32px 16px !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .stat-strip-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
