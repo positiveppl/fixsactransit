@@ -1,9 +1,8 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
-import mapboxgl from 'mapbox-gl'
 
 declare global {
-  interface Window { mapboxgl: typeof mapboxgl }
+  interface Window { mapboxgl: any }
 }
 
 // ── Sacramento light rail shapes (from actual GTFS shapes.txt) ─────────────────
