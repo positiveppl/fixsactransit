@@ -2,7 +2,8 @@ import { fetchAllScores, CityScore } from './lib/api'
 import Nav from './components/Nav'
 import Hero from './components/Hero'
 import StatStrip from './components/StatStrip'
-import TransitCanvas from './components/TransitCanvas'
+import TransitMapbox from './components/TransitMapbox'
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
 import CodeBlock from './components/CodeBlock'
 import Sidebar from './components/Sidebar'
 import TripPlanner from './components/TripPlanner'
@@ -30,7 +31,7 @@ export default async function Page() {
       <StatStrip sac={sac} />
       <ContentGrid>
         <div>
-          <TransitCanvas />
+          <TransitMapbox mapboxToken={MAPBOX_TOKEN} />
           <CodeBlock sac={sac} />
         </div>
         <Sidebar sac={sac} allCities={cities} />
