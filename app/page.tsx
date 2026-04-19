@@ -10,7 +10,6 @@ import TripPlanner from './components/TripPlanner'
 import Manifesto from './components/Manifesto'
 import { ContentGrid } from './components/ResponsiveGrid'
 
-export const runtime = 'edge'
 export const revalidate = 300
 
 export default async function Page() {

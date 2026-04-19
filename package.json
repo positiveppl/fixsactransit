@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "pages:build": "next build && npx @cloudflare/next-on-pages",
+    "pages:build": "next build",
     "start": "next start",
     "lint": "eslint",
     "deploy:gateway": "wrangler deploy workers/api-gateway/index.js --name api-gateway",
