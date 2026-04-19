@@ -8,7 +8,6 @@
 // CPU timeouts. Run it after scores are confirmed working.
 
 import { CITIES, BOUNDS, normalize } from '../../shared/cities.js';
-import { parseCSV, parseCSVSafe, extractFileFromZip } from '../../shared/graph-builder.js';
 import { buildAndStoreGraph, parseCSV, parseCSVSafe, extractFileFromZip } from '../../shared/graph-builder.js';
 
 export default {
