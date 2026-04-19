@@ -166,7 +166,7 @@ export default function TransitMapbox({ mapboxToken }: { mapboxToken: string }) 
   // Fetch real bus positions from our API route
   const fetchBuses = useCallback(async () => {
     try {
-      const res = await fetch('/api/vehicles', { cache: 'no-store' })
+      const res = await fetch('https://vehicles.msgpnn.workers.dev', { cache: 'no-store' })
       if (!res.ok) throw new Error(`${res.status}`)
       const data = await res.json()
       const vehicles: BusVehicle[] = (data.vehicles || []).filter(
