@@ -1,3 +1,0 @@
-module.exports=[33290,a=>{"use strict";var b=a.i(7997);a.s(["default",0,function({children:a}){return(0,b.jsx)("html",{lang:"en",children:(0,b.jsx)("body",{children:a})})},"metadata",0,{title:"Fix Sac Transit — Sacramento vs Every Other City",description:"Sacramento transit is 6.6× slower than driving. We're the state capital. This should not be acceptable.",openGraph:{title:"Fix Sac Transit",description:"Sacramento transit is 6.6× slower than driving. We're the state capital.",url:"https://fixsactransit.org"}}])},70864,a=>{a.n(a.i(33290))}];
-
-//# sourceMappingURL=app_layout_tsx_13yf0ls._.js.map
