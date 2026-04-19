@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type mapboxgl from 'mapbox-gl'
+import mapboxgl from 'mapbox-gl'
 
 declare global {
   interface Window { mapboxgl: typeof mapboxgl }
