@@ -9,18 +9,9 @@
 
 import { CITIES, BOUNDS, normalize } from '../../shared/cities.js';
 import { parseCSV, parseCSVSafe, extractFileFromZip } from '../../shared/graph-builder.js';
+import { buildAndStoreGraph, parseCSV, parseCSVSafe, extractFileFromZip } from '../../shared/graph-builder.js';
 
 export default {
-  async scheduled(event, env, ctx) {
-    console.log('gtfs-score-cron: starting', new Date().toISOString());
-    const results = await runScoring(CITIES, env);
-    await env.TRANSIT_KV.put('index:last_run', JSON.stringify({
-      ran_at: new Date().toISOString(),
-      results,
-    }));
-    console.log('gtfs-score-cron: done', results);
-  },
-
   async fetch(request, env) {
     const url = new URL(request.url);
 
@@ -36,9 +27,26 @@ export default {
       });
     }
 
-    return new Response('gtfs-score-cron\n\nEndpoints:\n  /run\n  /run?city=sacramento');
+    if (url.pathname === '/build-graph') {
+      const cityId = url.searchParams.get('city') || 'sacramento';
+      const city = CITIES.find(c => c.id === cityId);
+      if (!city) return new Response('City not found', { status: 404 });
+
+      try {
+        const zip = await fetchGTFSZip(city.gtfs_static);
+        const graphStats = await buildAndStoreGraph(city.id, zip, env.TRANSIT_KV);
+        return new Response(JSON.stringify({ status: 'ok', ...graphStats }, null, 2), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ status: 'error', error: err.message }, null, 2), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    return new Response('gtfs-score-cron\n\nEndpoints:\n  /run\n  /run?city=sacramento\n  /build-graph?city=sacramento');
   },
-};
 
 // ── Core scoring loop ─────────────────────────────────────────────────────────
 
