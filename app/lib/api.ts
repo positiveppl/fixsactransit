@@ -1,4 +1,6 @@
-export const API_BASE = 'https://api-gateway.fixsactransit.workers.dev'
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_GATEWAY ||
+  'https://api-gateway.msgpnn.workers.dev'
 
 export interface CityScore {
   id: string
