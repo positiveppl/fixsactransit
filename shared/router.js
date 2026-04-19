@@ -12,7 +12,7 @@
 
 const TRANSFER_PENALTY_SEC = 300;  // 5 min penalty per transfer (discourages unnecessary transfers)
 const MAX_WALK_TOTAL_SEC   = 1200; // 20 min total walking budget
-const MAX_JOURNEY_SEC      = 7200; // 2 hour hard cap (anything longer = no route)
+const MAX_JOURNEY_SEC = 10800; // 3 hour hard cap
 const WALK_SPEED_MPS       = 1.33;
 
 // ── Main Router Entry Point ───────────────────────────────────────────────────
@@ -44,7 +44,7 @@ export async function findRoute(kv, cityId, fromLatLon, toLatLon, departureTimeS
 
   // 4. Load all chunks (for smaller cities like Sacramento, this is fast)
   // For large cities: lazy-load chunks as we expand nodes
-  const allEdges = await loadAllChunks(kv, cityId, meta.chunk_count);
+  const allEdges = await loadAllChunks(kv, cityId, meta.chunk_count, relevantStopIds, stopMap);
 
   // 5. Run time-dependent Dijkstra from all origin stops simultaneously
   const result = dijkstra(allEdges, originStops, destStopIds, departureTimeSec, stopMap);
@@ -64,7 +64,7 @@ function findNearestStops(stopMap, lat, lon, count = 3) {
       ...stop,
       distM: haversineMeters(lat, lon, stop.lat, stop.lon),
     }))
-    .filter(s => s.distM <= 1000) // within 1km
+    .filter(s => s.distM <= 1500) // within 1.5km
     .sort((a, b) => a.distM - b.distM)
     .slice(0, count);
 }
@@ -72,30 +72,21 @@ function findNearestStops(stopMap, lat, lon, count = 3) {
 // ── Chunk Loader ──────────────────────────────────────────────────────────────
 
 async function loadAllChunks(kv, cityId, chunkCount, relevantStopIds, stopMap) {
-  // Only load chunks that contain stops we actually need
-  const neededChunks = new Set();
-
-  for (const stopId of relevantStopIds) {
-    const stop = stopMap[stopId];
-    if (stop?.chunk !== undefined) neededChunks.add(stop.chunk);
-  }
-
-  // If we can't determine chunks, load first 2 as fallback
-  if (!neededChunks.size) {
-    neededChunks.add(0);
-    neededChunks.add(1);
-  }
-
-  console.log(`Loading ${neededChunks.size} of ${chunkCount} chunks`);
-
   const allEdges = [];
-  for (const chunkId of neededChunks) {
+
+  for (let chunkId = 0; chunkId < chunkCount; chunkId++) {
     const chunk = await kv.get(`graph:${cityId}:chunk:${chunkId}`, 'json');
-    if (chunk) allEdges.push(...chunk);
+    if (!chunk) continue;
+
+    // Handle both array and object formats
+    const edges = Array.isArray(chunk) ? chunk : Object.values(chunk);
+    allEdges.push(...edges);
   }
 
+  console.log(`Loaded ${allEdges.length} edges from ${chunkCount} chunks`);
   return allEdges;
 }
+
 // ── Time-Dependent Dijkstra ───────────────────────────────────────────────────
 
 function dijkstra(edges, originStops, destStopIds, startTimeSec, stopMap) {

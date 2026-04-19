@@ -2,12 +2,7 @@
 import { useEffect, useState } from 'react'
 import { CityScore, fmtMin } from '../lib/api'
 
-const STATIC_CITIES = [
-  { name: 'Washington DC', score: 9.4, pct: 95, color: '#202020' },
-  { name: 'Portland',      score: 7.9, pct: 80, color: '#202020' },
-  { name: 'Denver',        score: 7.1, pct: 72, color: '#202020' },
-  { name: 'Phoenix',       score: 5.4, pct: 54, color: '#8d8d8d' },
-]
+const CA_CITY_IDS = ['san_francisco', 'los_angeles', 'san_diego', 'san_jose', 'sacramento']
 
 const INIT_DEPS = [
   { route:'51', dest:'Freeport & Sutterville', min:4 },
@@ -28,14 +23,18 @@ export default function Sidebar({ sac, allCities }: { sac: CityScore | null; all
     return () => clearInterval(iv)
   }, [])
 
-  const sacScore = sac?.score ? parseFloat(sac.score) : 2.8
-  const sacPct = (sacScore / 10) * 100
-
-  // Merge live city data where available
-  const cityRows = STATIC_CITIES.map(c => {
-    const live = allCities.find(a => a.name === c.name)
-    return live?.score ? { ...c, score: parseFloat(live.score), pct: (parseFloat(live.score) / 10) * 100 } : c
-  })
+  // All 5 CA cities compete — Sacramento ranks by its actual live score
+  const cityRows = CA_CITY_IDS
+    .map(id => allCities.find(c => c.id === id))
+    .filter((c): c is CityScore => !!c && !!c.score)
+    .map(c => ({
+      name: c.name,
+      id: c.id,
+      score: parseFloat(c.score!),
+      pct: (parseFloat(c.score!) / 10) * 100,
+      isSac: c.id === 'sacramento',
+    }))
+    .sort((a, b) => b.score - a.score)
 
   const cardStyle = { border: '1px solid #202020', borderRadius: 20, overflow: 'hidden' as const }
   const headStyle = { padding: '14px 18px', borderBottom: '1px solid #e5e5e5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
@@ -93,26 +92,20 @@ export default function Sidebar({ sac, allCities }: { sac: CityScore | null; all
 
       {/* CITY COMPARISON */}
       <div id="cities" style={cardStyle}>
-        <div style={headStyle}><span style={titleStyle}>Transit Score · Other Capitals</span></div>
+        <div style={headStyle}><span style={titleStyle}>Transit Score · CA Cities</span></div>
         <div style={bodyStyle}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {cityRows.map(c => (
-              <div key={c.name} style={{ display: 'grid', gridTemplateColumns: '88px 1fr 36px', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid #f0f0f0' }}>
-                <span style={{ fontSize: 11, color: '#646464', fontFamily: 'JetBrains Mono, monospace' }}>{c.name}</span>
+            {cityRows.map((c, i) => (
+              <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '88px 1fr 36px', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: i < cityRows.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: c.isSac ? '#ea2804' : '#646464', fontWeight: c.isSac ? 700 : 400 }}>
+                  {c.name}{c.isSac ? ' ←' : ''}
+                </span>
                 <div style={{ height: 3, background: '#e5e5e5', borderRadius: 9999, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', background: c.color, borderRadius: 9999, width: animated ? `${c.pct}%` : '0%', transition: 'width 1.4s cubic-bezier(0.16,1,0.3,1)' }} />
+                  <div style={{ height: '100%', background: c.isSac ? '#ea2804' : '#202020', borderRadius: 9999, width: animated ? `${c.pct}%` : '0%', transition: `width 1.4s cubic-bezier(0.16,1,0.3,1) ${i * 80}ms` }} />
                 </div>
-                <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#646464', textAlign: 'right' }}>{c.score.toFixed(1)}</span>
+                <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: c.isSac ? '#ea2804' : '#646464', fontWeight: c.isSac ? 700 : 400, textAlign: 'right' }}>{c.score.toFixed(1)}</span>
               </div>
             ))}
-            {/* Sacramento — live */}
-            <div style={{ display: 'grid', gridTemplateColumns: '88px 1fr 36px', alignItems: 'center', gap: 10, padding: '9px 0' }}>
-              <span style={{ fontSize: 11, color: '#ea2804', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>Sacramento ←</span>
-              <div style={{ height: 3, background: '#e5e5e5', borderRadius: 9999, overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: '#ea2804', borderRadius: 9999, width: animated ? `${sacPct}%` : '0%', transition: 'width 1.4s cubic-bezier(0.16,1,0.3,1) 0.6s' }} />
-              </div>
-              <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#ea2804', fontWeight: 700, textAlign: 'right' }}>{sacScore.toFixed(1)}</span>
-            </div>
           </div>
         </div>
       </div>

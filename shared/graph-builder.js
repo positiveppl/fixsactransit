@@ -65,12 +65,18 @@ export async function buildAndStoreGraph(cityId, gtfsZip, kv) {
 
   console.log(`[graph-builder] ${cityId}: ${edges.length} total edges`);
 
-  // 7. Chunk edges by source stop hash
+// 7. Chunk edges by source stop hash
   const stopIds   = Object.keys(stopMap);
   const chunkMap  = assignChunks(stopIds, CHUNK_SIZE);
+
+  // Annotate each stop with its chunk assignment so router can load targeted chunks
+  for (const [stopId, chunkId] of Object.entries(chunkMap)) {
+    if (stopMap[stopId]) stopMap[stopId].chunk = chunkId;
+  }
+
   const chunks    = buildChunks(edges, chunkMap);
   const chunkCount = Object.keys(chunks).length;
-
+  
   // 8. Write trips per route (for schedule lookup)
   const routeTrips = groupRouteTrips(tripStops, tripRouteMap);
 

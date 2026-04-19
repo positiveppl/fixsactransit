@@ -1,16 +1,39 @@
 // workers/gtfs-score-cron/index.js
 // ── Runs daily at 6am UTC ─────────────────────────────────────────────────────
-// 1. Downloads each city's GTFS static zip
-// 2. Computes frequency + coverage scores
-// 3. Writes scores to KV
+// Computes frequency + coverage scores ONLY. Graph building is separate
+// (run locally via build-graph-local.mjs and push to KV with wrangler).
 //
-// NOTE: Graph building moved to a separate /build-graph endpoint to avoid
-// CPU timeouts. Run it after scores are confirmed working.
+// CPU budget breakdown per city:
+//   - GTFS zip fetch:        ~1–3s network, 0 CPU
+//   - stop_times parse:      light — only peak-hour rows kept
+//   - coverage (bucket):     O(stops) instead of O(stops × grid) — ~50x faster
+//   - KV write:              negligible
+//
+// Process one city at a time via /run?city=sacramento to stay under limits.
 
 import { CITIES, BOUNDS, normalize } from '../../shared/cities.js';
-import { buildAndStoreGraph, parseCSV, parseCSVSafe, extractFileFromZip } from '../../shared/graph-builder.js';
+import { parseCSV, parseCSVSafe } from '../../shared/graph-builder.js';
 
 export default {
+  async scheduled(event, env, ctx) {
+    console.log('gtfs-score-cron: starting', new Date().toISOString());
+
+    const results = [];
+    for (const city of CITIES) {
+      const result = await processCity(city, env);
+      results.push(result);
+      // Yield between cities to avoid CPU accumulation
+      await sleep(100);
+    }
+
+    await env.TRANSIT_KV.put('index:last_run', JSON.stringify({
+      ran_at: new Date().toISOString(),
+      results,
+    }));
+
+    console.log('gtfs-score-cron: done', results);
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
 
@@ -20,69 +43,73 @@ export default {
         ? CITIES.filter(c => c.id === cityId)
         : CITIES;
 
-      const results = await runScoring(citiesToRun, env);
+      const results = [];
+      for (const city of citiesToRun) {
+        const result = await processCity(city, env);
+        results.push(result);
+        await sleep(100);
+      }
+
       return new Response(JSON.stringify({ status: 'done', results }, null, 2), {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
       });
     }
 
-    if (url.pathname === '/build-graph') {
-      const cityId = url.searchParams.get('city') || 'sacramento';
-      const city = CITIES.find(c => c.id === cityId);
-      if (!city) return new Response('City not found', { status: 404 });
-
-      try {
-        const zip = await fetchGTFSZip(city.gtfs_static);
-        const graphStats = await buildAndStoreGraph(city.id, zip, env.TRANSIT_KV);
-        return new Response(JSON.stringify({ status: 'ok', ...graphStats }, null, 2), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ status: 'error', error: err.message }, null, 2), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    return new Response('gtfs-score-cron\n\nEndpoints:\n  /run\n  /run?city=sacramento\n  /build-graph?city=sacramento');
+    return new Response(
+      'gtfs-score-cron\n\nEndpoints:\n  /run              — all cities\n  /run?city=sacramento — single city'
+    );
   },
+};
 
-// ── Core scoring loop ─────────────────────────────────────────────────────────
+// ── Per-city processing ───────────────────────────────────────────────────────
 
-async function runScoring(cities, env) {
-  const results = [];
-
-  for (const city of cities) {
-    try {
-      console.log(`Processing: ${city.name}`);
-      const zip = await fetchGTFSZip(city.gtfs_static);
-      const scores = await processCityGTFS(zip);
-
-      const existing = await env.TRANSIT_KV.get(`city:${city.id}`, 'json') || {};
-      const record = {
-        ...existing,
-        id:                   city.id,
-        name:                 city.name,
-        state:                city.state,
-        rail_feed:            city.rail_feed,
-        frequency_score:      scores.frequency_score,
-        coverage_score:       scores.coverage_score,
-        avg_headway_minutes:  scores.avg_headway_minutes,
-        coverage_pct:         scores.coverage_pct,
-        stop_count:           scores.stop_count,
-        gtfs_computed_at:     new Date().toISOString(),
-      };
-
-      await env.TRANSIT_KV.put(`city:${city.id}`, JSON.stringify(record));
-      results.push({ city: city.id, status: 'ok', ...scores });
-
-    } catch (err) {
-      console.error(`Failed: ${city.name}`, err.message);
-      results.push({ city: city.id, status: 'error', error: err.message });
-    }
+async function processCity(city, env) {
+  if (!city.gtfs_static) {
+    console.log(`Skipping: ${city.name} (no gtfs_static — data seeded manually)`);
+    return { city: city.id, status: 'skipped', reason: 'no gtfs_static' };
   }
 
-  return results;
+  try {
+    console.log(`Processing: ${city.name}`);
+
+    const zip = await fetchGTFSZip(city.gtfs_static);
+    const scores = await processCityGTFS(zip);
+
+    // Merge with existing KV record — preserve pain factor data if present
+    const existing = await env.TRANSIT_KV.get(`city:${city.id}`, 'json') || {};
+
+    const record = {
+      ...existing,
+      id:                   city.id,
+      name:                 city.name,
+      state:                city.state,
+      rail_feed:            city.rail_feed,
+      frequency_score:      scores.frequency_score,
+      coverage_score:       scores.coverage_score,
+      avg_headway_minutes:  scores.avg_headway_minutes,
+      coverage_pct:         scores.coverage_pct,
+      stop_count:           scores.stop_count,
+      gtfs_computed_at:     new Date().toISOString(),
+    };
+
+    // Recompute composite score if pain data already exists
+    if (existing.pain_factor != null) {
+      const { computeScore } = await import('../../shared/cities.js');
+      record.score = computeScore(
+        scores.avg_headway_minutes,
+        scores.coverage_pct,
+        existing.pain_factor,
+      );
+    }
+
+    await env.TRANSIT_KV.put(`city:${city.id}`, JSON.stringify(record));
+    console.log(`Done: ${city.name}`, scores);
+    return { city: city.id, status: 'ok', ...scores };
+
+  } catch (err) {
+    console.error(`Failed: ${city.name}`, err.message);
+    return { city: city.id, status: 'error', error: err.message };
+  }
 }
 
 // ── GTFS Scoring ──────────────────────────────────────────────────────────────
@@ -96,17 +123,19 @@ async function processCityGTFS(zip) {
   ]);
 
   const frequency = computeFrequency(stopTimes, trips, calendar);
-  const coverage  = computeCoverageFast(stops);
+  const coverage  = computeCoverage(stops);
 
   return {
     avg_headway_minutes:  frequency.avg_headway,
     peak_headway_minutes: frequency.peak_headway,
-    frequency_score:      normalize(frequency.avg_headway, { best: 5, worst: 60 }, 'lower_better'),
+    frequency_score:      normalize(frequency.avg_headway, { best: 5, worst: 45 }, 'lower_better'),
     coverage_pct:         coverage.pct,
     stop_count:           coverage.stop_count,
-    coverage_score:       normalize(coverage.pct, { best: 90, worst: 20 }, 'higher_better'),
+    coverage_score:       normalize(coverage.pct, { best: 90, worst: 10 }, 'higher_better'),
   };
 }
+
+// ── Frequency ─────────────────────────────────────────────────────────────────
 
 function computeFrequency(stopTimes, trips, calendar) {
   const weekdayServices = new Set(
@@ -122,9 +151,10 @@ function computeFrequency(stopTimes, trips, calendar) {
 
   stopTimes.forEach(st => {
     const serviceId = tripService[st.trip_id];
-    if (calendar && !weekdayServices.has(serviceId)) return;
+    if (calendar && weekdayServices.size > 0 && !weekdayServices.has(serviceId)) return;
 
     const secs = timeToSeconds(st.arrival_time);
+    // Only AM peak (7–9am) and PM peak (4–7pm)
     const inAMPeak = secs >= 7 * 3600 && secs <= 9 * 3600;
     const inPMPeak = secs >= 16 * 3600 && secs <= 19 * 3600;
     if (!inAMPeak && !inPMPeak) return;
@@ -145,7 +175,7 @@ function computeFrequency(stopTimes, trips, calendar) {
     if (gaps.length) headways.push(gaps.reduce((a, b) => a + b, 0) / gaps.length);
   });
 
-  if (!headways.length) return { avg_headway: 60, peak_headway: 60 };
+  if (!headways.length) return { avg_headway: 45, peak_headway: 45 };
 
   return {
     avg_headway:  Math.round((headways.reduce((a, b) => a + b, 0) / headways.length) * 10) / 10,
@@ -153,67 +183,74 @@ function computeFrequency(stopTimes, trips, calendar) {
   };
 }
 
-// ── Fast coverage using spatial grid buckets ──────────────────────────────────
+// ── Coverage (bucket-based, O(stops) not O(stops × grid)) ────────────────────
 //
-// Old approach: O(GRID² × stops) = ~5M haversine calls for Sacramento.
-// New approach: bucket stops into 0.4km cells, then each grid point only
-// checks its immediate neighboring buckets — O(GRID²) with tiny constant.
+// Old approach: for each grid cell, scan all stops to find the nearest one.
+// That's O(GRID² × stops) = ~5M ops for Sacramento. Kills CPU budget.
+//
+// New approach: hash each stop into a lat/lon bucket. For each grid cell,
+// only check stops in adjacent buckets. Worst case O(stops × nearby_buckets)
+// where nearby_buckets is ~9. ~50x faster.
 
-function computeCoverageFast(stops) {
+function computeCoverage(stops) {
   if (!stops.length) return { pct: 0, stop_count: 0 };
 
-  const RADIUS_KM = 0.4;
-  // Cell size slightly larger than radius so we only need to check adjacent cells
-  const CELL_DEG_LAT = 0.004; // ~0.44km
-  const CELL_DEG_LON = 0.005; // ~0.44km at Sacramento's latitude
+  const RADIUS_KM  = 0.4;
+  const GRID_STEPS = 40;
 
-  // Build spatial hash of stops
-  const buckets = {};
-  const parsedStops = [];
+  // Parse stops once
+  const parsed = stops
+    .map(s => ({ lat: parseFloat(s.stop_lat), lon: parseFloat(s.stop_lon) }))
+    .filter(s => !isNaN(s.lat) && !isNaN(s.lon));
 
-  for (const stop of stops) {
-    const lat = parseFloat(stop.stop_lat);
-    const lon = parseFloat(stop.stop_lon);
-    if (!lat || !lon) continue;
-    parsedStops.push({ lat, lon });
+  if (!parsed.length) return { pct: 0, stop_count: 0 };
 
-    const bLat = Math.floor(lat / CELL_DEG_LAT);
-    const bLon = Math.floor(lon / CELL_DEG_LON);
-    const key = `${bLat},${bLon}`;
-    if (!buckets[key]) buckets[key] = [];
-    buckets[key].push({ lat, lon });
-  }
-
-  if (!parsedStops.length) return { pct: 0, stop_count: 0 };
-
-  const lats = parsedStops.map(s => s.lat);
-  const lons = parsedStops.map(s => s.lon);
+  const lats = parsed.map(s => s.lat);
+  const lons = parsed.map(s => s.lon);
   const minLat = Math.min(...lats), maxLat = Math.max(...lats);
   const minLon = Math.min(...lons), maxLon = Math.max(...lons);
 
-  const GRID_STEPS = 30; // reduced from 40 — still accurate enough
-  const latStep = (maxLat - minLat) / GRID_STEPS;
-  const lonStep = (maxLon - minLon) / GRID_STEPS;
+  const latRange = maxLat - minLat || 0.01;
+  const lonRange = maxLon - minLon || 0.01;
 
-  let covered = 0, total = 0;
+  // ── Build spatial bucket map ──
+  // Bucket size slightly larger than radius so adjacent buckets always cover overlap
+  const LAT_DEG_PER_KM = 1 / 111;
+  const LON_DEG_PER_KM = 1 / (111 * Math.cos((((minLat + maxLat) / 2) * Math.PI) / 180));
+  const bucketLatSize  = RADIUS_KM * LAT_DEG_PER_KM;
+  const bucketLonSize  = RADIUS_KM * LON_DEG_PER_KM;
+
+  const buckets = new Map();
+  parsed.forEach(stop => {
+    const bLat = Math.floor((stop.lat - minLat) / bucketLatSize);
+    const bLon = Math.floor((stop.lon - minLon) / bucketLonSize);
+    const key  = `${bLat},${bLon}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(stop);
+  });
+
+  // ── Grid evaluation ──
+  const latStep = latRange / GRID_STEPS;
+  const lonStep = lonRange / GRID_STEPS;
+  let covered = 0;
+  const total = (GRID_STEPS + 1) * (GRID_STEPS + 1);
 
   for (let i = 0; i <= GRID_STEPS; i++) {
     for (let j = 0; j <= GRID_STEPS; j++) {
       const lat = minLat + i * latStep;
       const lon = minLon + j * lonStep;
-      total++;
 
-      // Only check stops in neighboring buckets (3x3 = 9 buckets max)
-      const bLat = Math.floor(lat / CELL_DEG_LAT);
-      const bLon = Math.floor(lon / CELL_DEG_LON);
+      const bLat = Math.floor((lat - minLat) / bucketLatSize);
+      const bLon = Math.floor((lon - minLon) / bucketLonSize);
 
+      // Check this bucket and 8 neighbors
       let isNear = false;
-      outer: for (let di = -1; di <= 1; di++) {
-        for (let dj = -1; dj <= 1; dj++) {
-          const neighbors = buckets[`${bLat + di},${bLon + dj}`];
+      outer: for (let db = -1; db <= 1; db++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const neighbors = buckets.get(`${bLat + db},${bLon + dc}`);
           if (!neighbors) continue;
-          for (const s of neighbors) {
-            if (haversineKm(lat, lon, s.lat, s.lon) <= RADIUS_KM) {
+          for (const stop of neighbors) {
+            if (haversineKm(lat, lon, stop.lat, stop.lon) <= RADIUS_KM) {
               isNear = true;
               break outer;
             }
@@ -226,7 +263,7 @@ function computeCoverageFast(stops) {
 
   return {
     pct:        Math.round((covered / total) * 1000) / 10,
-    stop_count: parsedStops.length,
+    stop_count: parsed.length,
   };
 }
 
@@ -258,3 +295,5 @@ async function fetchGTFSZip(url) {
   if (!res.ok) throw new Error(`GTFS fetch failed: ${res.status} ${url}`);
   return res.arrayBuffer();
 }
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));

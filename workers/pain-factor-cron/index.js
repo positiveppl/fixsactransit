@@ -7,8 +7,6 @@ import { CITIES, BOUNDS, normalize, computeScore } from '../../shared/cities.js'
 import { findRoute } from '../../shared/router.js';
 import { patchEdgesWithRealtime } from '../../shared/realtime.js';
 
-// Drive speed estimate — used to compute drive time from straight-line distance
-// Real-world urban average including traffic signals: ~30 km/h
 const DRIVE_SPEED_KMH = 30;
 
 export default {
@@ -21,7 +19,6 @@ export default {
       try {
         console.log(`Routing: ${city.name}`);
 
-        // Check graph exists before trying to route
         const meta = await env.TRANSIT_KV.get(`meta:${city.id}`, 'json');
         if (!meta) {
           console.warn(`No graph for ${city.id} — run gtfs-score-cron first`);
@@ -30,7 +27,6 @@ export default {
         }
 
         const pain = await computePainFactor(city, env.TRANSIT_KV);
-
         const existing = await env.TRANSIT_KV.get(`city:${city.id}`, 'json') || {};
 
         const record = {
@@ -53,7 +49,6 @@ export default {
           pain_computed_at: new Date().toISOString(),
         };
 
-        // Recompute composite score if frequency + coverage data exists
         if (existing.avg_headway_minutes != null && existing.coverage_pct != null) {
           record.score = computeScore(
             existing.avg_headway_minutes,
@@ -93,16 +88,42 @@ export default {
 
     if (url.pathname.startsWith('/test/')) {
       const cityId = url.pathname.split('/')[2];
-      const city   = CITIES.find(c => c.id === cityId);
+      const city = CITIES.find(c => c.id === cityId);
       if (!city) return new Response('City not found', { status: 404 });
 
-      const pain = await computePainFactor(city, env.TRANSIT_KV);
-      return new Response(JSON.stringify(pain, null, 2), {
+      try {
+        const pain = await computePainFactor(city, env.TRANSIT_KV);
+        return new Response(JSON.stringify(pain, null, 2), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({
+          error: err.message,
+          stack: err.stack,
+        }, null, 2), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    if (url.pathname === '/debug/sacramento') {
+      const meta   = await env.TRANSIT_KV.get('meta:sacramento', 'json');
+      const stops  = await env.TRANSIT_KV.get('stops:sacramento', 'json');
+      const chunk0 = await env.TRANSIT_KV.get('graph:sacramento:chunk:0', 'json');
+
+      return new Response(JSON.stringify({
+        meta,
+        stop_count:        stops  ? Object.keys(stops).length  : 0,
+        sample_stops:      stops  ? Object.entries(stops).slice(0, 3) : [],
+        chunk0_edge_count: chunk0 ? Object.keys(chunk0).length : 0,
+        chunk0_sample:     chunk0 ? Object.entries(chunk0).slice(0, 2) : [],
+      }, null, 2), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    return new Response('pain-factor-cron\n\nEndpoints:\n  /run\n  /test/:cityId');
+    return new Response('pain-factor-cron\n\nEndpoints:\n  /run\n  /test/:cityId\n  /debug/sacramento');
   },
 };
 
@@ -112,10 +133,9 @@ async function computePainFactor(city, kv) {
   const [oLat, oLon] = city.trip.origin.split(',').map(Number);
   const [dLat, dLon] = city.trip.destination.split(',').map(Number);
 
-  // Departure time: next weekday 8am UTC in seconds since midnight
-  const departureTimeSec = 8 * 3600; // 08:00:00
+  // 8am Sacramento local time (UTC-7)
+  const departureTimeSec = 15 * 3600;
 
-  // Run Dijkstra router
   const itinerary = await findRoute(
     kv,
     city.id,
@@ -128,17 +148,14 @@ async function computePainFactor(city, kv) {
     throw new Error(`No route found for ${city.id} — graph may be incomplete`);
   }
 
-  // Estimate drive time from straight-line distance
   const distKm     = haversineKm(oLat, oLon, dLat, dLon);
   const driveMin   = Math.max(5, Math.round((distKm / DRIVE_SPEED_KMH) * 60));
   const transitMin = itinerary.total_minutes;
   const ratio      = Math.round((transitMin / driveMin) * 10) / 10;
 
-  // Next departure in minutes from now
-  const nextDepSec     = itinerary.next_departure_sec || departureTimeSec;
-  const nextDepMin     = Math.max(1, Math.round((nextDepSec - departureTimeSec) / 60));
+  const nextDepSec = itinerary.next_departure_sec || departureTimeSec;
+  const nextDepMin = Math.max(1, Math.round((nextDepSec - departureTimeSec) / 60));
 
-  // Build human-readable route summary
   const routeSummary = itinerary.legs
     .filter(l => l.type === 'bus' || l.type === 'rail')
     .map(l => `${l.type === 'bus' ? 'Bus' : 'Rail'} (${Math.round(l.durationSec / 60)}m)`)

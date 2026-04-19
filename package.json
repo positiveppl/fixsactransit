@@ -10,8 +10,9 @@
     "lint": "eslint",
     "deploy:gateway": "wrangler deploy workers/api-gateway/index.js --name api-gateway",
     "deploy:gtfs": "wrangler deploy workers/gtfs-score-cron/index.js --name gtfs-score-cron",
+    "deploy:vehicles": "wrangler deploy workers/vehicles/index.js --name vehicles",
     "deploy:pain": "wrangler deploy workers/pain-factor-cron/index.js --name pain-factor-cron",
-    "deploy:all": "npm run deploy:gtfs && npm run deploy:pain && npm run deploy:gateway",
+    "deploy:all": "npm run deploy:vehicles && npm run deploy:gtfs && npm run deploy:pain && npm run deploy:gateway",
     "kv:create": "wrangler kv:namespace create TRANSIT_KV",
     "kv:create-preview": "wrangler kv:namespace create TRANSIT_KV --preview"
   },

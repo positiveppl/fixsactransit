@@ -46,24 +46,31 @@ export default {
       // Extract vehicles
       const vehicles = (feed.entity || [])
         .filter((e) => e.vehicle && e.vehicle.position)
-        .map((e) => ({
-          id: e.id,
-          route_id: e.vehicle.trip?.routeId || "",
-          trip_id: e.vehicle.trip?.tripId || "",
-          vehicle_id: e.vehicle.vehicle?.id || "",
-          label: e.vehicle.vehicle?.label || "",
-          latitude: e.vehicle.position.latitude,
-          longitude: e.vehicle.position.longitude,
-          bearing: e.vehicle.position.bearing || 0,
-          speed: e.vehicle.position.speed || 0,
-          timestamp: e.vehicle.timestamp || 0,
-        }));
+        .map((e) => {
+          const rawLat = e.vehicle.position.latitude;
+          const rawLon = e.vehicle.position.longitude;
+          const latitude  = Math.abs(rawLat) > 1000 ? rawLat / 1e7 : rawLat;
+          const longitude = Math.abs(rawLon) > 1000 ? rawLon / 1e7 : rawLon;
+          return {
+            id: e.id,
+            route_id: e.vehicle.trip?.routeId || "",
+            trip_id: e.vehicle.trip?.tripId || "",
+            vehicle_id: e.vehicle.vehicle?.id || "",
+            label: e.vehicle.vehicle?.label || "",
+            latitude,
+            longitude,
+            bearing: e.vehicle.position.bearing || 0,
+            speed: e.vehicle.position.speed || 0,
+            timestamp: e.vehicle.timestamp || 0,
+          };
+        })
+        .filter((v) => v.latitude > 38.0 && v.latitude < 39.5 && v.longitude < -120.5 && v.longitude > -122.5);
 
       return json({
-        vehicles,
-        count: vehicles.length,
-        fetched_at: new Date().toISOString(),
-      });
+          vehicles,
+          count: vehicles.length,
+          fetched_at: new Date().toISOString(),
+        });
     } catch (err) {
       return json(
         {
