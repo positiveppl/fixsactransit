@@ -538,29 +538,7 @@ export default function TransitMapbox({ mapboxToken }: { mapboxToken: string }) 
       <div style={{ position: 'relative' }}>
         <div ref={mapContainer} style={{ width: '100%', height: 420 }} />
 
-        {/* "No real-time data" watermark — overlaid on map for rail lines */}
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%',
-          transform: 'translate(-50%, -50%)',
-          pointerEvents: 'none', textAlign: 'center', zIndex: 2,
-          opacity: mapLoaded ? 1 : 0, transition: 'opacity 0.5s',
-        }}>
-          <div style={{
-            background: 'rgba(255,255,255,0.82)',
-            backdropFilter: 'blur(4px)',
-            border: '1px solid rgba(0,0,0,0.08)',
-            borderRadius: 8, padding: '5px 12px',
-          }}>
-            <div style={{
-              fontFamily: 'JetBrains Mono, monospace', fontSize: 9,
-              letterSpacing: '0.15em', color: 'rgba(0,0,0,0.2)',
-              textTransform: 'uppercase',
-            }}>
-              Rail position unknown · No public real-time feed
-            </div>
-          </div>
-        </div>
-
+        
         {/* Loading overlay */}
         {!mapLoaded && (
           <div style={{
