@@ -1,5 +1,10 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
+import type mapboxgl from 'mapbox-gl'
+
+declare global {
+  interface Window { mapboxgl: typeof mapboxgl }
+}
 
 // ── Sacramento light rail shapes (from actual GTFS shapes.txt) ─────────────────
 // Gold Line: Watt/I-80 ↔ Meadowview (east-west trunk + south branch)
@@ -317,7 +322,7 @@ export default function TransitMapbox({ mapboxToken }: { mapboxToken: string }) 
     const script = document.createElement('script')
     script.src = 'https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js'
     script.onload = () => {
-      const mapboxgl = (window as unknown as { mapboxgl: typeof import('mapbox-gl') }).mapboxgl
+      const mapboxgl = window.mapboxgl
       mapboxgl.accessToken = mapboxToken
 
       const map = new mapboxgl.Map({
