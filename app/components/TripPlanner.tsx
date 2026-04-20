@@ -84,7 +84,13 @@ function AddressInput({ value, onChange, onSelect, placeholder, icon, inputStyle
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (value.length < 2) { setSuggestions([]); setShowDropdown(false); return }
+    if (value.length < 2) {
+      debounceRef.current = setTimeout(() => {
+        setSuggestions([])
+        setShowDropdown(false)
+      }, 0)
+      return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+    }
     debounceRef.current = setTimeout(() => fetchSuggestions(value), 250)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [value, fetchSuggestions])
