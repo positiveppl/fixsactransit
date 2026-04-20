@@ -379,7 +379,7 @@ export default function TransitMapbox({ mapboxToken }: { mapboxToken: string }) 
 
       <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e5e5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#8d8d8d' }}>
-          {busCount > 0 ? `${busCount} buses tracked · ${trainStateRef.current.length} rail (simulated)` : 'Connecting to SacRT feed...'}
+          {busCount > 0 ? `${busCount} buses tracked · 8 rail (simulated)` : 'Connecting to SacRT feed...'}
         </span>
         <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#8d8d8d' }}>
           {lastFetch ? `Updated ${lastFetch}` : 'Updates every 15s'}
