@@ -69,21 +69,38 @@ function findNearestStops(stopMap, lat, lon, count = 3) {
     .slice(0, count);
 }
 
-// ── Chunk Loader ──────────────────────────────────────────────────────────────
-
 async function loadAllChunks(kv, cityId, chunkCount, relevantStopIds, stopMap) {
-  const allEdges = [];
+  // Only load chunks containing stops near origin/destination
+  // Each stop has a .chunk assignment from the graph builder
+  const neededChunks = new Set();
 
-  for (let chunkId = 0; chunkId < chunkCount; chunkId++) {
-    const chunk = await kv.get(`graph:${cityId}:chunk:${chunkId}`, 'json');
-    if (!chunk) continue;
-
-    // Handle both array and object formats
-    const edges = Array.isArray(chunk) ? chunk : Object.values(chunk);
-    allEdges.push(...edges);
+  // Always load chunks for the explicitly relevant stops
+  for (const stopId of relevantStopIds) {
+    const stop = stopMap[stopId];
+    if (stop?.chunk !== undefined) neededChunks.add(stop.chunk);
   }
 
-  console.log(`Loaded ${allEdges.length} edges from ${chunkCount} chunks`);
+  // If we have very few chunks identified, load a few more as buffer
+  // to ensure we can route through transfer points
+  if (neededChunks.size < 3) {
+    for (const stopId of Object.keys(stopMap).slice(0, 500)) {
+      const stop = stopMap[stopId];
+      if (stop?.chunk !== undefined) neededChunks.add(stop.chunk);
+      if (neededChunks.size >= 3) break;
+    }
+  }
+
+  console.log(`Loading ${neededChunks.size}/${chunkCount} chunks for routing`);
+
+  const allEdges = [];
+  await Promise.all(
+    Array.from(neededChunks).map(async chunkId => {
+      const chunk = await kv.get(`graph:${cityId}:chunk:${chunkId}`, 'json');
+      if (chunk) allEdges.push(...Object.values(chunk));
+    })
+  );
+
+  console.log(`Loaded ${allEdges.length} edges from ${neededChunks.size} chunks`);
   return allEdges;
 }
 

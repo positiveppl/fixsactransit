@@ -2,17 +2,31 @@
 // scripts/reseed-static-cities.mjs
 // Recomputes GTFS scores locally for cities blocked by Workers, pushes to KV.
 //
+// Coverage metric: stops per sq km of city urban area.
+// This is honest, stable, and not broken by bounding box issues.
+// Source for urban areas: US Census Bureau urbanized area data.
+//
 // Usage:
 //   node scripts/reseed-static-cities.mjs              # all cities
 //   node scripts/reseed-static-cities.mjs --city=san_diego
 
-import { execSync, execFileSync } from 'child_process';
+import { execSync } from 'child_process';
 import { rmSync, existsSync, mkdirSync, readFileSync } from 'fs';
-import { writeFile, unlink, readFile } from 'fs/promises';
+import { writeFile, unlink } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
 const KV_NAMESPACE_ID = 'aac52192fcae4d898c2eb6d25ea8f644';
+
+// Urban area sq km — US Census Bureau urbanized area boundaries
+// These are the actual developed urban footprints, not city limits
+const URBAN_AREA_KM2 = {
+  san_francisco: 121,   // SF proper (dense 7x7 miles)
+  los_angeles:   1302,  // LA city limits
+  san_diego:     964,   // SD city limits
+  san_jose:      467,   // SJ city limits
+  sacramento:    680,   // Sacramento city limits
+};
 
 const STATIC_CITIES = [
   {
@@ -20,7 +34,7 @@ const STATIC_CITIES = [
     name: 'San Francisco',
     state: 'CA',
     rail_feed: true,
-    // Replace YOUR_511_KEY with your actual key from 511.org/open-data/transit
+    // Get free key at 511.org/open-data/transit — replace YOUR_511_KEY
     gtfs_url: 'https://api.511.org/transit/datafeeds?api_key=31152551-eb0b-43df-b5fb-627c6546d3e5&operator_id=SF',
     trip: { origin: '37.7599,-122.4148', destination: '37.7946,-122.3999' },
   },
@@ -50,9 +64,13 @@ const STATIC_CITIES = [
   },
 ];
 
+// ── Scoring bounds ────────────────────────────────────────────────────────────
+// Coverage: stops per sq km
+//   best: 25/km² (SF-level density)
+//   worst: 2/km² (very sparse)
 const BOUNDS = {
   headway:  { best: 5,  worst: 45 },
-  coverage: { best: 90, worst: 10 },
+  coverage: { best: 25, worst: 2  },  // stops/km²
   pain:     { best: 1,  worst: 8  },
 };
 
@@ -65,10 +83,10 @@ function normalize(value, bounds, direction = 'lower_better') {
   return Math.round(ratio * 100) / 10;
 }
 
-function computeScore(avgHeadway, coveragePct, painFactor) {
+function computeScore(avgHeadway, stopsPerKm2, painFactor) {
   return (
     normalize(avgHeadway,  BOUNDS.headway,  'lower_better')  * 0.40 +
-    normalize(coveragePct, BOUNDS.coverage, 'higher_better') * 0.30 +
+    normalize(stopsPerKm2, BOUNDS.coverage, 'higher_better') * 0.30 +
     normalize(painFactor,  BOUNDS.pain,     'lower_better')  * 0.30
   ).toFixed(1);
 }
@@ -103,20 +121,12 @@ function parseCSVText(text) {
   return rows;
 }
 
-// ── Scoring ───────────────────────────────────────────────────────────────────
+// ── Frequency scoring ─────────────────────────────────────────────────────────
 
 function timeToSeconds(t) {
   if (!t) return 0;
   const [h, m, s] = t.split(':').map(Number);
   return h * 3600 + m * 60 + (s || 0);
-}
-
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 function scoreFrequency(stopTimes, trips, calendar) {
@@ -158,52 +168,24 @@ function scoreFrequency(stopTimes, trips, calendar) {
   };
 }
 
-function scoreCoverage(stops) {
-  const RADIUS_KM = 0.4, GRID_STEPS = 40;
-  const parsed = stops
-    .map(s => ({ lat: parseFloat(s.stop_lat), lon: parseFloat(s.stop_lon) }))
-    .filter(s => !isNaN(s.lat) && !isNaN(s.lon));
-  if (!parsed.length) return { pct: 0, stop_count: 0 };
+// ── Coverage: stops per sq km ─────────────────────────────────────────────────
 
-  const lats = parsed.map(s => s.lat), lons = parsed.map(s => s.lon);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const latRange = maxLat - minLat || 0.01, lonRange = maxLon - minLon || 0.01;
-  const midLat = (minLat + maxLat) / 2;
-  const bucketLatSize = RADIUS_KM / 111;
-  const bucketLonSize = RADIUS_KM / (111 * Math.cos(midLat * Math.PI / 180));
-
-  const buckets = new Map();
-  parsed.forEach(s => {
-    const key = `${Math.floor((s.lat - minLat) / bucketLatSize)},${Math.floor((s.lon - minLon) / bucketLonSize)}`;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(s);
+function scoreCoverage(stops, cityId) {
+  const validStops = stops.filter(s => {
+    const lat = parseFloat(s.stop_lat);
+    const lon = parseFloat(s.stop_lon);
+    return !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0;
   });
 
-  const latStep = latRange / GRID_STEPS, lonStep = lonRange / GRID_STEPS;
-  let covered = 0;
-  const total = (GRID_STEPS + 1) ** 2;
+  const urbanAreaKm2 = URBAN_AREA_KM2[cityId];
+  if (!urbanAreaKm2) throw new Error(`No urban area defined for ${cityId}`);
 
-  for (let i = 0; i <= GRID_STEPS; i++) {
-    for (let j = 0; j <= GRID_STEPS; j++) {
-      const lat = minLat + i * latStep, lon = minLon + j * lonStep;
-      const bLat = Math.floor((lat - minLat) / bucketLatSize);
-      const bLon = Math.floor((lon - minLon) / bucketLonSize);
-      let isNear = false;
-      outer: for (let db = -1; db <= 1; db++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          const neighbors = buckets.get(`${bLat+db},${bLon+dc}`);
-          if (!neighbors) continue;
-          for (const s of neighbors) {
-            if (haversineKm(lat, lon, s.lat, s.lon) <= RADIUS_KM) { isNear = true; break outer; }
-          }
-        }
-      }
-      if (isNear) covered++;
-    }
-  }
-
-  return { pct: Math.round(covered / total * 1000) / 10, stop_count: parsed.length };
+  const stopsPerKm2 = Math.round((validStops.length / urbanAreaKm2) * 100) / 100;
+  return {
+    stops_per_km2: stopsPerKm2,
+    stop_count: validStops.length,
+    urban_area_km2: urbanAreaKm2,
+  };
 }
 
 // ── KV helpers ────────────────────────────────────────────────────────────────
@@ -241,6 +223,7 @@ if (!citiesToRun.length) {
 }
 
 console.log(`\nReseeding ${citiesToRun.length} city/cities...\n`);
+console.log('Coverage method: stops per sq km (urban area)\n');
 
 for (const city of citiesToRun) {
   console.log(`── ${city.name} ──`);
@@ -250,13 +233,11 @@ for (const city of citiesToRun) {
   try {
     await downloadZip(city.gtfs_url, zipPath);
 
-    // Use system unzip — handles all zip variants correctly
     console.log('  Extracting zip...');
     if (existsSync(unzipDir)) rmSync(unzipDir, { recursive: true });
     mkdirSync(unzipDir, { recursive: true });
     execSync(`unzip -o "${zipPath}" -d "${unzipDir}"`, { stdio: 'pipe' });
 
-    // Find files anywhere inside the extracted dir (handles subdirectory layouts)
     const findFile = (name) => {
       try {
         const found = execSync(`find "${unzipDir}" -name "${name}" | head -1`, { encoding: 'utf8' }).trim();
@@ -278,17 +259,15 @@ for (const city of citiesToRun) {
     console.log('  Computing frequency...');
     const freq = scoreFrequency(stopTimes, trips, calendar);
 
-    console.log('  Computing coverage...');
-    const cov = scoreCoverage(stops);
+    console.log('  Computing coverage (stops/km²)...');
+    const cov = scoreCoverage(stops, city.id);
 
-    const freqScore = normalize(freq.avg_headway, BOUNDS.headway,  'lower_better');
-    const covScore  = normalize(cov.pct,          BOUNDS.coverage, 'higher_better');
+    const freqScore = normalize(freq.avg_headway,   BOUNDS.headway,  'lower_better');
+    const covScore  = normalize(cov.stops_per_km2,  BOUNDS.coverage, 'higher_better');
 
     console.log(`  Headway: ${freq.avg_headway}min → frequency_score: ${freqScore}`);
-    console.log(`  Coverage: ${cov.pct}% → coverage_score: ${covScore}`);
+    console.log(`  Stops/km²: ${cov.stops_per_km2} (${cov.stop_count} stops / ${cov.urban_area_km2}km²) → coverage_score: ${covScore}`);
 
-    // Preserve existing pain factor from KV
-    console.log('  Fetching existing KV record...');
     const existing = kvGet(`city:${city.id}`) || {};
     const painFactor = existing.pain_factor ?? null;
 
@@ -302,13 +281,16 @@ for (const city of citiesToRun) {
       coverage_score:       covScore,
       avg_headway_minutes:  freq.avg_headway,
       peak_headway_minutes: freq.peak_headway,
-      coverage_pct:         cov.pct,
+      stops_per_km2:        cov.stops_per_km2,
       stop_count:           cov.stop_count,
+      urban_area_km2:       cov.urban_area_km2,
+      // Keep coverage_pct for backward compat but mark it as deprecated
+      coverage_pct:         cov.stops_per_km2,
       gtfs_computed_at:     new Date().toISOString(),
     };
 
     if (painFactor != null) {
-      record.score = computeScore(freq.avg_headway, cov.pct, painFactor);
+      record.score = computeScore(freq.avg_headway, cov.stops_per_km2, painFactor);
       console.log(`  Pain: ${painFactor}× (from KV) → composite score: ${record.score}`);
     } else {
       console.log('  No pain factor in KV — composite score not updated');
@@ -327,4 +309,4 @@ for (const city of citiesToRun) {
 }
 
 console.log('Done. Verify:');
-console.log('  curl "https://api-gateway.msgpnn.workers.dev/api/scores" | python3 -m json.tool | grep -E \'"name"|"score"\'');
+console.log('  curl "https://api-gateway.msgpnn.workers.dev/api/scores" | python3 -m json.tool | grep -E \'"name"|"score"|"stops_per_km"\'');

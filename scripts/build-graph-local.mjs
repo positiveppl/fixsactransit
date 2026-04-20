@@ -139,14 +139,17 @@ for (const [stopId, chunkId] of Object.entries(chunkMap)) {
 
 // ── KV write via wrangler CLI ─────────────────────────────────────────────────
 
-function kvPut(key, value) {
-  // Write value to temp file to avoid shell escaping issues
-  const tmpFile = `/tmp/kv-value-${Date.now()}.json`;
-  writeFileSync(tmpFile, value);
-  execSync(
-    `npx wrangler kv key put --remote --namespace-id=${KV_NAMESPACE_ID} "${key}" --path="${tmpFile}"`,
-    { stdio: 'pipe' }
-  );
+function kvPut(key, filePath) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      execSync(`npx wrangler kv key put --remote --namespace-id=${KV_NAMESPACE_ID} "${key}" --path="${filePath}"`, { stdio: 'inherit' });
+      return;
+    } catch (err) {
+      if (attempt === 3) throw err;
+      console.log(`  ⚠ Retry ${attempt}/3 for ${key}...`);
+      execSync('sleep 2');
+    }
+  }
 }
 
 // ── File helpers ──────────────────────────────────────────────────────────────
