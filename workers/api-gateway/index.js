@@ -26,9 +26,14 @@ export default {
       return new Response(null, { status: 204, headers: CORS });
     }
 
-    // ── Route: POST /api/route ───────────────────────────────────────────────
+   // ── Route: POST /api/route ───────────────────────────────────────────────
     if (path === "/api/route" && request.method === "POST") {
       return handleRoute(request, env);
+    }
+
+    // ── Route: POST /api/seed/pain ───────────────────────────────────────────
+    if (path === "/api/seed/pain" && request.method === "POST") {
+      return handleSeedPain(env);
     }
 
     if (request.method !== "GET") {
@@ -46,10 +51,19 @@ export default {
       return handleCityScore(scoreMatch[1], env);
     }
 
-    // ── Route: GET /api/live/:cityId ─────────────────────────────────────────
+// ── Route: GET /api/live/:cityId ─────────────────────────────────────────
     const liveMatch = path.match(/^\/api\/live\/([a-z_]+)$/);
     if (liveMatch) {
       return handleLiveFeed(liveMatch[1], env);
+    }
+
+    // ── Route: GET /api/departures ───────────────────────────────────────────
+    if (path === "/api/departures") {
+      return handleDepartures(url, env);
+    }
+
+    if (path === "/api/seed/pain" && request.method === "POST") {
+      return handleSeedPain(env);
     }
 
     // ── Route: GET /api/status ───────────────────────────────────────────────
@@ -71,6 +85,65 @@ export default {
 // POST /api/route
 // Body: { originLat, originLon, destLat, destLon, cityId? }
 // Returns: { transit_minutes, drive_minutes, pain_factor, walk_minutes, wait_minutes, transfers, origin_address, dest_address }
+async function handleSeedPain(env) {
+  const CITIES_TO_SEED = [
+    { id: 'sacramento', originLat: 38.5516, originLon: -121.4685, destLat: 38.5802, destLon: -121.4931 },
+    { id: 'san_francisco', originLat: 37.7599, originLon: -122.4148, destLat: 37.7946, destLon: -122.3999 },
+  ];
+
+  const results = [];
+  for (const city of CITIES_TO_SEED) {
+    try {
+      const stopMap = await env.TRANSIT_KV.get(`stops:${city.id}`, 'json');
+      if (!stopMap) { results.push({ city: city.id, status: 'no_stops' }); continue; }
+
+      const meta = await env.TRANSIT_KV.get(`meta:${city.id}`, 'json');
+      if (!meta) { results.push({ city: city.id, status: 'no_meta' }); continue; }
+
+      const originStops = findNearestStops(stopMap, city.originLat, city.originLon, 3);
+      const destStops   = findNearestStops(stopMap, city.destLat, city.destLon, 3);
+      if (!originStops.length || !destStops.length) { results.push({ city: city.id, status: 'no_stops_nearby' }); continue; }
+
+      const chunkList = Array.from({ length: meta.chunk_count }, (_, i) => i);
+      const allEdges = [];
+      await Promise.all(chunkList.map(async chunkId => {
+        const chunk = await env.TRANSIT_KV.get(`graph:${city.id}:chunk:${chunkId}`, 'json');
+        if (chunk) allEdges.push(...(Array.isArray(chunk) ? chunk : Object.values(chunk)));
+      }));
+
+      const DEPARTURE_SEC = 15 * 3600;
+      const result = dijkstra(allEdges, originStops, new Set(destStops.map(s => s.id)), DEPARTURE_SEC);
+      if (!result) { results.push({ city: city.id, status: 'no_route' }); continue; }
+
+      const transitMin = Math.round((result.arrivalTime - DEPARTURE_SEC) / 60);
+      const distKm     = haversineKm(city.originLat, city.originLon, city.destLat, city.destLon);
+      const driveMin   = Math.max(5, Math.round((distKm / 30) * 60));
+      const painFactor = Math.round((transitMin / driveMin) * 10) / 10;
+      const walkMin    = Math.round((result.walkSec || 0) / 60);
+      const waitMin    = Math.max(0, Math.round((transitMin - walkMin) * 0.4));
+      const waitPct    = Math.round((waitMin / transitMin) * 100);
+
+      const existing = await env.TRANSIT_KV.get(`city:${city.id}`, 'json') || {};
+      const updated = {
+        ...existing,
+        pain_factor:      painFactor,
+        transit_minutes:  transitMin,
+        drive_minutes:    driveMin,
+        walk_minutes:     walkMin,
+        wait_minutes:     waitMin,
+        wait_pct:         waitPct,
+        transfers:        result.transfers,
+        pain_computed_at: new Date().toISOString(),
+      };
+      await env.TRANSIT_KV.put(`city:${city.id}`, JSON.stringify(updated));
+      results.push({ city: city.id, status: 'ok', pain_factor: painFactor });
+    } catch (e) {
+      results.push({ city: city.id, status: 'error', error: e.message });
+    }
+  }
+  return json({ results });
+}
+
 async function handleRoute(request, env) {
   let body;
   try {
@@ -97,28 +170,22 @@ async function handleRoute(request, env) {
   const destStops   = findNearestStops(stopMap, destLat, destLon, 3);
 
   if (!originStops.length || !destStops.length) {
-    return json({ error: "No stops found near origin or destination — try a location closer to a bus stop" }, 404);
-  }
+  const outOfArea = !originStops.length && !destStops.length
+    ? 'Neither location'
+    : !originStops.length ? 'Your origin' : 'Your destination';
+  return json({
+    error: `${outOfArea} doesn't appear to be within SacRT's service area. Elk Grove, Folsom, and Roseville use separate transit agencies not yet in our data.`,
+    hint: 'Try locations within Sacramento, Citrus Heights, Rancho Cordova, or North Highlands.'
+  }, 404);
+}
 
-  // Load only the chunks containing relevant stops
-  const neededChunks = new Set();
-  [...originStops, ...destStops].forEach(s => {
-    if (s.chunk !== undefined) neededChunks.add(s.chunk);
-  });
+// Load ALL chunks — chunks are hashed by stop_id (not geography),
+// so partial loading almost never produces a connected path.
+// Sacramento has 6 chunks × ~2MB = ~12MB, well within Worker limits.
+const meta = await env.TRANSIT_KV.get(`meta:${cityId}`, "json");
+if (!meta) return json({ error: "No graph metadata" }, 503);
 
-  // Load adjacent chunks too for routing through transfer points
-  const meta = await env.TRANSIT_KV.get(`meta:${cityId}`, "json");
-  if (!meta) return json({ error: "No graph metadata" }, 503);
-
-  // Expand to neighboring chunks to ensure connectivity
-  const chunksToLoad = new Set(neededChunks);
-  for (const c of neededChunks) {
-    if (c > 0) chunksToLoad.add(c - 1);
-    if (c < meta.chunk_count - 1) chunksToLoad.add(c + 1);
-  }
-
-  // Cap at 4 chunks max to stay under CPU limit
-  const chunkList = Array.from(chunksToLoad).slice(0, 4);
+const chunkList = Array.from({ length: meta.chunk_count }, (_, i) => i);
 
   const allEdges = [];
   await Promise.all(
@@ -132,7 +199,8 @@ async function handleRoute(request, env) {
   );
 
   // 8am PDT departure
-  const DEPARTURE_SEC = 15 * 3600;
+  const now = new Date();
+const DEPARTURE_SEC = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
   const result = dijkstra(allEdges, originStops, new Set(destStops.map(s => s.id)), DEPARTURE_SEC);
 
@@ -170,7 +238,7 @@ async function handleRoute(request, env) {
 // ── Routing ───────────────────────────────────────────────────────────────────
 
 const TRANSFER_PENALTY_SEC = 300;
-const MAX_WALK_TOTAL_SEC   = 1200;
+const MAX_WALK_TOTAL_SEC   = 2700;  // 45 min — covers 3km walk
 const MAX_JOURNEY_SEC      = 10800;
 const WALK_SPEED_MPS       = 1.33;
 
@@ -185,7 +253,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 function findNearestStops(stopMap, lat, lon, n = 3) {
   return Object.entries(stopMap)
     .map(([id, s]) => ({ id, ...s, distM: haversineKm(lat, lon, s.lat, s.lon) * 1000 }))
-    .filter(s => s.distM <= 1500)
+    .filter(s => s.distM <= 3000)
     .sort((a, b) => a.distM - b.distM)
     .slice(0, n);
 }
@@ -405,6 +473,105 @@ async function handleStatus(env) {
     last_pain_run: lastPain?.ran_at ?? null,
   });
 }
+
+async function handleDepartures(url, env) {
+  const lat = parseFloat(url.searchParams.get("lat"));
+  const lon = parseFloat(url.searchParams.get("lon"));
+  const cityId = url.searchParams.get("city") || "sacramento";
+
+  if (isNaN(lat) || isNaN(lon)) {
+    return json({ error: "Required: lat, lon" }, 400);
+  }
+
+  // Find nearest stops
+  const stopMap = await env.TRANSIT_KV.get(`stops:${cityId}`, "json");
+  if (!stopMap) return json({ error: "No stop data" }, 503);
+
+  const nearbyStops = Object.entries(stopMap)
+    .map(([id, s]) => ({ id, ...s, distM: haversineKm(lat, lon, s.lat, s.lon) * 1000 }))
+    .filter(s => s.distM <= 600)
+    .sort((a, b) => a.distM - b.distM)
+    .slice(0, 5);
+
+  if (!nearbyStops.empty && nearbyStops.length === 0) {
+    return json({ error: "No stops found within 600m", departures: [] });
+  }
+
+  const nearbyStopIds = new Set(nearbyStops.map(s => s.id));
+
+  // Current time in seconds since midnight (Pacific time)
+  const now = new Date();
+  const pacificOffset = -7; // PDT (use -8 for PST)
+  const pacificNow = new Date(now.getTime() + pacificOffset * 3600 * 1000);
+  const nowSec = pacificNow.getUTCHours() * 3600 + pacificNow.getUTCMinutes() * 60 + pacificNow.getUTCSeconds();
+
+  // Load all route trip keys in parallel
+  const routeKeys = await env.TRANSIT_KV.list({ prefix: `trips:${cityId}:` });
+  const tripArrays = await Promise.all(
+    routeKeys.keys.map(async ({ name }) => {
+      const data = await env.TRANSIT_KV.get(name, "json");
+      const routeId = name.split(":")[2];
+      return { routeId, stops: data || [] };
+    })
+  );
+
+// Find upcoming departures from nearby stops
+  const departures = [];
+
+  for (const { routeId, stops: tripList } of tripArrays) {
+    for (const trip of tripList) {
+      const stopTimes = trip.stops || [];
+      for (const st of stopTimes) {
+        if (!nearbyStopIds.has(st.stop_id)) continue;
+        if (st.pickup_type === "1") continue;
+
+        const depSec = timeStrToSec(st.departure_time);
+        const minUntil = Math.round((depSec - nowSec) / 60);
+
+        if (minUntil < 0 || minUntil > 90) continue;
+
+        const lastStop = stopTimes[stopTimes.length - 1];
+        const stopInfo = stopMap[st.stop_id];
+        const nearStop = nearbyStops.find(s => s.id === st.stop_id);
+
+        departures.push({
+          route: routeId,
+          stop_name: stopInfo?.name || st.stop_id,
+          dist_m: Math.round(nearStop?.distM || 0),
+          headsign: lastStop ? (stopMap[lastStop.stop_id]?.name || lastStop.stop_id) : "—",
+          departure_time: st.departure_time,
+          minutes: minUntil,
+        });
+      }
+    }
+  }
+
+
+  // Deduplicate same route + time + stop combinations
+  const seen = new Set();
+  const unique = departures.filter(d => {
+    const key = `${d.route}:${d.departure_time}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  unique.sort((a, b) => a.minutes - b.minutes);
+
+  return json({
+    location: { lat, lon },
+    nearby_stops: nearbyStops.map(s => ({ id: s.id, name: s.name, dist_m: Math.round(s.distM) })),
+    departures: unique.slice(0, 12),
+    generated_at: new Date().toISOString(),
+    note: "Schedule-based · No live feed available for SacRT buses",
+  });
+}
+
+function timeStrToSec(t) {
+  if (!t) return NaN;
+  const [h, m, s] = t.split(":").map(Number);
+  return h * 3600 + m * 60 + (s || 0);
+}
+
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {

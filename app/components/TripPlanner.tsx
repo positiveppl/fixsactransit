@@ -210,7 +210,9 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
         originCoord = await retrieveCoords(originId)
       } else {
         // Fallback geocode for manual text entry
-        const q = origin.includes('Sacramento') || origin.includes('CA') ? origin : `${origin}, Sacramento CA`
+        const q = origin.includes('Sacramento') || origin.includes('CA') || /\d{5}/.test(origin)
+          ? origin
+          : `${origin}, Sacramento CA`
         const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${MAPBOX_TOKEN}&limit=1&country=US&proximity=-121.4944,38.5816`
         const res = await fetch(url)
         if (res.ok) {
@@ -225,7 +227,9 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
       if (destId) {
         destCoord = await retrieveCoords(destId)
       } else {
-        const q = dest.includes('Sacramento') || dest.includes('CA') ? dest : `${dest}, Sacramento CA`
+        const q = dest.includes('Sacramento') || dest.includes('CA') || /\d{5}/.test(dest)
+          ? dest
+          : `${dest}, Sacramento CA`
         const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${MAPBOX_TOKEN}&limit=1&country=US&proximity=-121.4944,38.5816`
         const res = await fetch(url)
         if (res.ok) {
