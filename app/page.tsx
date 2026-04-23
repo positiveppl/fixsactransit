@@ -17,16 +17,22 @@ export default function Page() {
   const [cities, setCities] = useState<CityScore[]>([])
   const [sac, setSac] = useState<CityScore | null>(null)
 
+  // Add this:
+  console.log('Render — sac:', sac?.pain_factor, sac?.score)
+
+
   useEffect(() => {
     async function load() {
-      try {
-        const data = await fetchAllScores()
-        setCities(data.cities)
-        setSac(data.cities.find(c => c.id === 'sacramento') ?? null)
-      } catch (err) {
-        console.error('Failed to fetch scores:', err)
-      }
-    }
+  try {
+    console.log('Fetching scores...')
+    const data = await fetchAllScores()
+    console.log('Got data:', data.cities.find(c => c.id === 'sacramento'))
+    setCities(data.cities)
+    setSac(data.cities.find(c => c.id === 'sacramento') ?? null)
+  } catch (err) {
+    console.error('Failed to fetch scores:', err)
+  }
+}
     load()
     // Re-fetch every 5 minutes
     const iv = setInterval(load, 5 * 60 * 1000)

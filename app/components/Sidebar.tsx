@@ -4,24 +4,37 @@ import { CityScore, fmtMin } from '../lib/api'
 
 const CA_CITY_IDS = ['san_francisco', 'los_angeles', 'san_diego', 'san_jose', 'sacramento']
 
-const INIT_DEPS = [
-  { route:'51', dest:'Freeport & Sutterville', min:4 },
-  { route:'23', dest:'Broadway & Land Park Dr', min:8 },
-  { route:'30', dest:'Stockton Blvd & Fruitridge', min:21 },
-  { route:'51', dest:'Freeport & Sutterville', min:36 },
-]
-
 export default function Sidebar({ sac, allCities }: { sac: CityScore | null; allCities: CityScore[] }) {
   const [animated, setAnimated] = useState(false)
-  const [deps, setDeps] = useState(INIT_DEPS)
+  const [depState, setDepState] = useState<'idle'|'loading'|'loaded'|'error'>('idle')
+  const [departures, setDepartures] = useState<any[]>([])
+  const [depError, setDepError] = useState('')
 
   useEffect(() => {
     setTimeout(() => setAnimated(true), 300)
-    const iv = setInterval(() => {
-      setDeps(d => d.map(dep => ({ ...dep, min: dep.min <= 0 ? 20 + Math.floor(Math.random() * 25) : dep.min - 1 })))
-    }, 60000)
-    return () => clearInterval(iv)
   }, [])
+
+  async function loadDepartures() {
+    setDepState('loading')
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 })
+      )
+      const { latitude: lat, longitude: lon } = pos.coords
+      const res = await fetch(`https://api-gateway.msgpnn.workers.dev/api/departures?lat=${lat}&lon=${lon}`)
+      const data = await res.json()
+      if (!data.departures?.length) {
+        setDepError('No departures found nearby. You may be outside SacRT service area.')
+        setDepState('error')
+        return
+      }
+      setDepartures(data.departures.slice(0, 8))
+      setDepState('loaded')
+    } catch (e: any) {
+      setDepError(e?.code === 1 ? 'Location access denied.' : 'Could not load departures.')
+      setDepState('error')
+    }
+  }
 
   // All 5 CA cities compete — Sacramento ranks by its actual live score
   const cityRows = CA_CITY_IDS
@@ -114,18 +127,42 @@ export default function Sidebar({ sac, allCities }: { sac: CityScore | null; all
       <div style={cardStyle}>
         <div style={headStyle}>
           <span style={titleStyle}>Next Departures</span>
-          <div style={{ display: 'inline-flex', fontSize: 10, fontWeight: 600, padding: '3px 12px', borderRadius: 9999, background: '#2b9a66', color: '#fff', fontFamily: 'JetBrains Mono, monospace' }}>Nearest stop</div>
+          <div style={{ fontSize: 10, fontWeight: 600, padding: '3px 12px', borderRadius: 9999, background: depState === 'loaded' ? '#2b9a66' : '#e5e5e5', color: depState === 'loaded' ? '#fff' : '#8d8d8d', fontFamily: 'JetBrains Mono, monospace' }}>
+            {depState === 'loaded' ? 'Schedule' : 'Tap to load'}
+          </div>
         </div>
         <div style={bodyStyle}>
-          {deps.map((d, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < deps.length - 1 ? '1px solid #f0f0f0' : 'none', gap: 8 }}>
+          {depState === 'idle' && (
+            <div style={{ textAlign: 'center', padding: '8px 0' }}>
+              <button
+                onClick={loadDepartures}
+                style={{ background: '#202020', color: '#fff', border: 'none', borderRadius: 9999, padding: '10px 20px', fontSize: 11, fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, letterSpacing: '0.1em', cursor: 'pointer', textTransform: 'uppercase' }}
+              >
+                📍 Find Nearby Departures
+              </button>
+              <div style={{ fontSize: 10, color: '#8d8d8d', marginTop: 8, fontFamily: 'JetBrains Mono, monospace' }}>Uses your current location</div>
+            </div>
+          )}
+          {depState === 'loading' && (
+            <div style={{ fontSize: 11, color: '#8d8d8d', fontFamily: 'JetBrains Mono, monospace', padding: '8px 0' }}>Locating nearest stops...</div>
+          )}
+          {depState === 'error' && (
+            <div style={{ fontSize: 11, color: '#ea2804', fontFamily: 'JetBrains Mono, monospace', padding: '8px 0' }}>{depError}</div>
+          )}
+          {depState === 'loaded' && departures.map((d, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < departures.length - 1 ? '1px solid #f0f0f0' : 'none', gap: 8 }}>
               <div style={{ background: '#202020', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: 9999, fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>{d.route}</div>
-              <div style={{ fontSize: 11, color: '#646464', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.dest}</div>
-              <div className={d.min <= 3 ? 'blink' : ''} style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: d.min <= 10 ? '#ea2804' : '#202020', fontWeight: d.min <= 10 ? 700 : 400, whiteSpace: 'nowrap' }}>
-                {d.min} min{d.min <= 3 ? ' !!' : ''}
+              <div style={{ fontSize: 11, color: '#646464', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.stop_name}</div>
+              <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: d.minutes <= 10 ? '#ea2804' : '#202020', fontWeight: d.minutes <= 10 ? 700 : 400, whiteSpace: 'nowrap' }}>
+                {d.minutes === 0 ? 'Now' : `${d.minutes}m`}
               </div>
             </div>
           ))}
+          {depState === 'loaded' && (
+            <div style={{ fontSize: 9, color: '#8d8d8d', fontFamily: 'JetBrains Mono, monospace', marginTop: 10, lineHeight: 1.5 }}>
+              Schedule-based · No live feed available
+            </div>
+          )}
         </div>
       </div>
 

@@ -5,18 +5,18 @@
 
 export const CITIES = [
   {
-    id: "los_angeles",
-    name: "Los Angeles",
+    id: "sacramento",
+    name: "Sacramento",
     state: "CA",
-    // LA Metro bus GTFS — GitLab repo, updated weekly, confirmed via Mobility Database
-    gtfs_static: "https://gitlab.com/LACMTA/gtfs_bus/raw/master/gtfs_bus.zip",
-    gtfs_rt: "https://api.metro.net/agencies/lax/vehicles/",
-    rt_key_env: null,
-    rail_feed: true,
+    // iportal.sacrt.com confirmed active (Dec 2025 directory listing)
+    gtfs_static: null,
+    gtfs_rt: "https://api.goswift.ly/real-time/sacrt/gtfs-rt-vehicle-position",
+    rt_key_env: "SACRT_KEY",
+    rail_feed: false,
     trip: {
-      // Silver Lake to Downtown LA — ~5 miles
-      origin: "34.0870,-118.2712",
-      destination: "34.0522,-118.2437",
+      // Oak Park to Downtown Sacramento — ~4 miles
+      origin: "38.5516,-121.4685",
+      destination: "38.5802,-121.4931",
     },
   },
   {
@@ -67,18 +67,18 @@ export const CITIES = [
     },
   },
   {
-    id: "sacramento",
-    name: "Sacramento",
+    id: "los_angeles",
+    name: "Los Angeles",
     state: "CA",
-    // iportal.sacrt.com confirmed active (Dec 2025 directory listing)
-    gtfs_static: null,
-    gtfs_rt: "https://api.goswift.ly/real-time/sacrt/gtfs-rt-vehicle-position",
-    rt_key_env: "SACRT_KEY",
-    rail_feed: false,
+    // LA Metro bus GTFS — GitLab repo, updated weekly, confirmed via Mobility Database
+    gtfs_static: "https://gitlab.com/LACMTA/gtfs_bus/raw/master/gtfs_bus.zip",
+    gtfs_rt: "https://api.metro.net/agencies/lax/vehicles/",
+    rt_key_env: null,
+    rail_feed: true,
     trip: {
-      // Oak Park to Downtown Sacramento — ~4 miles
-      origin: "38.5516,-121.4685",
-      destination: "38.5802,-121.4931",
+      // Silver Lake to Downtown LA — ~5 miles
+      origin: "34.0870,-118.2712",
+      destination: "34.0522,-118.2437",
     },
   },
 ];

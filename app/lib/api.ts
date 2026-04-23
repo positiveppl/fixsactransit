@@ -36,17 +36,13 @@ export interface ScoresResponse {
 }
 
 export async function fetchAllScores(): Promise<ScoresResponse> {
-  const res = await fetch(`${API_BASE}/api/scores`, {
-    next: { revalidate: 300 }, // revalidate every 5 min
-  })
+  const res = await fetch(`${API_BASE}/api/scores`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
 
 export async function fetchCityScore(cityId: string): Promise<CityScore> {
-  const res = await fetch(`${API_BASE}/api/scores/${cityId}`, {
-    next: { revalidate: 300 },
-  })
+  const res = await fetch(`${API_BASE}/api/scores/${cityId}`)
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }

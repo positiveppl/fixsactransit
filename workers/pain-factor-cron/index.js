@@ -12,68 +12,11 @@ const DRIVE_SPEED_KMH = 30;
 export default {
   async scheduled(event, env, ctx) {
     console.log('pain-factor-cron: starting', new Date().toISOString());
-
-    const results = [];
-
-    for (const city of CITIES) {
-      try {
-        console.log(`Routing: ${city.name}`);
-
-        const meta = await env.TRANSIT_KV.get(`meta:${city.id}`, 'json');
-        if (!meta) {
-          console.warn(`No graph for ${city.id} — run gtfs-score-cron first`);
-          results.push({ city: city.id, status: 'no_graph' });
-          continue;
-        }
-
-        const pain = await computePainFactor(city, env.TRANSIT_KV);
-        const existing = await env.TRANSIT_KV.get(`city:${city.id}`, 'json') || {};
-
-        const record = {
-          ...existing,
-          id:               city.id,
-          name:             city.name,
-          state:            city.state,
-          rail_feed:        city.rail_feed,
-          pain_factor:      pain.ratio,
-          transit_minutes:  pain.transit_minutes,
-          drive_minutes:    pain.drive_minutes,
-          walk_minutes:     pain.walk_minutes,
-          wait_minutes:     pain.wait_minutes,
-          wait_pct:         pain.wait_pct,
-          transfers:        pain.transfers,
-          route_summary:    pain.route_summary,
-          next_departure_min: pain.next_departure_min,
-          legs:             pain.legs,
-          pain_score:       normalize(pain.ratio, BOUNDS.pain, 'lower_better'),
-          pain_computed_at: new Date().toISOString(),
-        };
-
-        if (existing.avg_headway_minutes != null && existing.coverage_pct != null) {
-          record.score = computeScore(
-            existing.avg_headway_minutes,
-            existing.coverage_pct,
-            pain.ratio,
-          );
-        }
-
-        await env.TRANSIT_KV.put(`city:${city.id}`, JSON.stringify(record));
-        results.push({ city: city.id, status: 'ok', pain_factor: pain.ratio });
-
-        await sleep(300);
-
-      } catch (err) {
-        console.error(`Failed: ${city.name}`, err.message);
-        results.push({ city: city.id, status: 'error', error: err.message });
-      }
-    }
-
-    await env.TRANSIT_KV.put('pain:last_run', JSON.stringify({
-      ran_at: new Date().toISOString(),
-      results,
-    }));
-
-    console.log('pain-factor-cron: done');
+    const res = await fetch('https://api-gateway.msgpnn.workers.dev/api/seed/pain', {
+      method: 'POST',
+    });
+    const data = await res.json();
+    console.log('pain-factor-cron: done', JSON.stringify(data));
   },
 
   async fetch(request, env) {
@@ -129,52 +72,44 @@ export default {
 
 // ── Pain Factor Computation ───────────────────────────────────────────────────
 
+const API_GATEWAY = 'https://api-gateway.msgpnn.workers.dev';
+
 async function computePainFactor(city, kv) {
   const [oLat, oLon] = city.trip.origin.split(',').map(Number);
   const [dLat, dLon] = city.trip.destination.split(',').map(Number);
 
-  // 8am Sacramento local time (UTC-7)
-  const departureTimeSec = 15 * 3600;
+  const res = await fetch(`${API_GATEWAY}/api/route`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      originLat: oLat,
+      originLon: oLon,
+      destLat:   dLat,
+      destLon:   dLon,
+      cityId:    city.id,
+    }),
+  });
 
-  const itinerary = await findRoute(
-    kv,
-    city.id,
-    { lat: oLat, lon: oLon },
-    { lat: dLat, lon: dLon },
-    departureTimeSec,
-  );
-
-  if (!itinerary) {
-    throw new Error(`No route found for ${city.id} — graph may be incomplete`);
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || `Route API error: ${res.status}`);
   }
 
-  const distKm     = haversineKm(oLat, oLon, dLat, dLon);
-  const driveMin   = Math.max(5, Math.round((distKm / DRIVE_SPEED_KMH) * 60));
-  const transitMin = itinerary.total_minutes;
-  const ratio      = Math.round((transitMin / driveMin) * 10) / 10;
-
-  const nextDepSec = itinerary.next_departure_sec || departureTimeSec;
-  const nextDepMin = Math.max(1, Math.round((nextDepSec - departureTimeSec) / 60));
-
-  const routeSummary = itinerary.legs
-    .filter(l => l.type === 'bus' || l.type === 'rail')
-    .map(l => `${l.type === 'bus' ? 'Bus' : 'Rail'} (${Math.round(l.durationSec / 60)}m)`)
-    .join(' → ');
+  const data = await res.json();
 
   return {
-    transit_minutes:    transitMin,
-    drive_minutes:      driveMin,
-    walk_minutes:       itinerary.walk_minutes,
-    wait_minutes:       itinerary.wait_minutes,
-    wait_pct:           itinerary.wait_pct,
-    transfers:          itinerary.transfers,
-    ratio,
-    route_summary:      routeSummary || 'No transit legs found',
-    next_departure_min: nextDepMin,
-    legs:               itinerary.legs,
+    transit_minutes:    data.transit_minutes,
+    drive_minutes:      data.drive_minutes,
+    walk_minutes:       data.walk_minutes,
+    wait_minutes:       data.wait_minutes,
+    wait_pct:           data.wait_pct,
+    transfers:          data.transfers,
+    ratio:              data.pain_factor,
+    route_summary:      `${data.origin_stop} → ${data.dest_stop}`,
+    next_departure_min: 0,
+    legs:               [],
   };
 }
-
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 function haversineKm(lat1, lon1, lat2, lon2) {
