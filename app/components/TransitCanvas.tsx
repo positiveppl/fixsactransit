@@ -33,8 +33,8 @@ const POLL_MS = 15_000
 const NODE_TTL = 90_000
 const MAX_LINK_DISTANCE = 135
 const CENTER_PULL = 0.018
-const ELASTICITY = 0.065
-const FRICTION = 0.86
+const ELASTICITY = 0.025
+const FRICTION = 0.90
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -89,7 +89,7 @@ function orbitProject(vehicle: Vehicle, W: number, H: number, time: number): [nu
 
   const band = (routeHash % 7) / 7
   const angleBase = lngNorm * Math.PI * ANGLE_STRETCH - Math.PI * 1.4
-  const angleDrift = Math.sin(time * 0.00008 + routeHash * 0.002) * 0.45
+  const angleDrift = Math.sin(time * 0.00008 + routeHash * 0.002) * 0.18
   const angle = angleBase + angleDrift + band * 0.7
 
   const baseRadius = lerp(size * 0.18, size * 0.52, latNorm) * RADIUS_STRETCH
@@ -248,6 +248,7 @@ export default function TransitCanvas() {
   const [activeRoutes, setActiveRoutes] = useState(0)
   const [lastUpdate, setLastUpdate] = useState('')
   const [fetchError, setFetchError] = useState(false)
+  const [showNarrative, setShowNarrative] = useState(false)
 
   const fetchVehicles = useCallback(async () => {
     try {
@@ -319,6 +320,14 @@ export default function TransitCanvas() {
       setFetchError(true)
     }
   }, [])
+
+  useEffect(() => {
+  const timer = setTimeout(() => {
+    setShowNarrative(true)
+  }, 2500)
+
+  return () => clearTimeout(timer)
+}, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -513,16 +522,27 @@ export default function TransitCanvas() {
         }}
       >
       <div
-        style={{
-          position: 'absolute',
-          right: 22,
-          bottom: 160,
-          maxWidth: 320,
-          fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-          pointerEvents: 'none',
-          lineHeight: 1.5,
-        }}
-      >
+      
+      style={{
+        position: 'absolute',
+        right: 22,
+        bottom: 120,
+        maxWidth: 280,
+        padding: '14px 16px',
+        borderRadius: 12,
+        background: 'rgba(0,0,0,0.35)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+        pointerEvents: 'none',
+        lineHeight: 1.5,
+
+        // ✨ fade goes HERE
+        opacity: showNarrative ? 1 : 0,
+        transform: showNarrative ? 'translateY(0px)' : 'translateY(10px)',
+        transition: 'opacity 1.4s ease, transform 1.4s ease',
+      }}
+>
         <p style={{
           fontSize: 11,
           color: 'rgba(255,255,255,0.55)',
