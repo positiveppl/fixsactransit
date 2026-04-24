@@ -8,10 +8,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
+export const runtime = 'edge'  // ← add this line
+
 const KV_NAMESPACE_ID = process.env.KV_NAMESPACE_ID || 'aac52192fcae4d898c2eb6d25ea8f644'
 const CF_ACCOUNT_ID   = process.env.CF_ACCOUNT_ID   || '2c71d94dab62fe783bc42ebd0dedb39f'
 const CF_API_TOKEN    = process.env.CF_API_TOKEN     || ''
-
 const KV_BASE = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${KV_NAMESPACE_ID}/values`
 
 // ── KV fetch ──────────────────────────────────────────────────────────────────
