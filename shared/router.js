@@ -15,11 +15,18 @@ const MAX_WALK_TOTAL_SEC   = 1200; // 20 min total walking budget
 const MAX_JOURNEY_SEC = 10800; // 3 hour hard cap
 const WALK_SPEED_MPS       = 1.33;
 
+// Add this helper at the top of router.js
+async function kvGetSafe(kv, key) {
+  const raw = await kv.get(key);
+  if (!raw || raw.startsWith('error code:')) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 // ── Main Router Entry Point ───────────────────────────────────────────────────
 
 export async function findRoute(kv, cityId, fromLatLon, toLatLon, departureTimeSec) {
   // 1. Load stops index
-  const stopMap = await kv.get(`stops:${cityId}`, 'json');
+  const stopMap = await kvGetSafe(kv, `stops:${cityId}`);
   if (!stopMap) throw new Error(`No stop data for ${cityId} — run graph builder first`);
 
   // 2. Find nearest stops to origin and destination
@@ -39,7 +46,7 @@ export async function findRoute(kv, cityId, fromLatLon, toLatLon, departureTimeS
   ];
 
   // 3. Load meta to know chunk count
-  const meta = await kv.get(`meta:${cityId}`, 'json');
+  const meta = await kvGetSafe(kv, `meta:${cityId}`);
   if (!meta) throw new Error(`No graph metadata for ${cityId}`);
 
   // 4. Load all chunks (for smaller cities like Sacramento, this is fast)
@@ -82,7 +89,7 @@ async function loadAllChunks(kv, cityId, chunkCount, relevantStopIds, stopMap) {
 
   // If we have very few chunks identified, load a few more as buffer
   // to ensure we can route through transfer points
-  if (neededChunks.size < 3) {
+  if (neededChunks.size < chunkCount) {
     for (const stopId of Object.keys(stopMap).slice(0, 500)) {
       const stop = stopMap[stopId];
       if (stop?.chunk !== undefined) neededChunks.add(stop.chunk);
@@ -95,7 +102,7 @@ async function loadAllChunks(kv, cityId, chunkCount, relevantStopIds, stopMap) {
   const allEdges = [];
   await Promise.all(
     Array.from(neededChunks).map(async chunkId => {
-      const chunk = await kv.get(`graph:${cityId}:chunk:${chunkId}`, 'json');
+      const chunk = await kvGetSafe(kv, `graph:${cityId}:chunk:${chunkId}`);
       if (chunk) allEdges.push(...Object.values(chunk));
     })
   );

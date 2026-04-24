@@ -200,7 +200,7 @@ const chunkList = Array.from({ length: meta.chunk_count }, (_, i) => i);
 
   // 8am PDT departure
   const now = new Date();
-const DEPARTURE_SEC = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+const DEPARTURE_SEC = 8 * 3600; // 8am — matches GTFS schedule window in graph
 
   const result = dijkstra(allEdges, originStops, new Set(destStops.map(s => s.id)), DEPARTURE_SEC);
 
@@ -391,6 +391,10 @@ async function handleAllScores(env) {
       stop_count: kv.stop_count ?? null,
       gtfs_computed_at: kv.gtfs_computed_at ?? null,
       pain_computed_at: kv.pain_computed_at ?? null,
+      wait_minutes: kv.wait_minutes ?? null,
+      wait_pct: kv.wait_pct ?? null,
+      transfers: kv.transfers ?? null,
+      walk_minutes: kv.walk_minutes ?? null,
     };
   });
 
