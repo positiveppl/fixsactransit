@@ -13,10 +13,30 @@ export default function StatStrip({ sac }: { sac: CityScore | null }) {
   }, [])
 
   const stats = [
-    { label: 'Pain Factor', value: `${sac?.pain_factor ?? 6.6}×`, color: '#ea2804', sub: 'slower than driving' },
-    { label: 'Transit Time', value: fmtMin(sac?.transit_minutes ?? 100), color: '#202020', sub: `${sac?.transfers ?? 1} transfer · ${sac?.walk_minutes ?? 11} min walk` },
-    { label: 'Drive Time', value: fmtMin(sac?.drive_minutes ?? 15), color: '#2b9a66', sub: 'same trip, by car' },
-    { label: 'Time Waiting', value: `${sac?.wait_pct ?? 41}%`, color: '#202020', sub: 'of the trip is standing still' },
+    {
+      label: 'Pain Factor',
+      value: sac ? `${sac.pain_factor}×` : '...',
+      color: '#ea2804',
+      sub: 'slower than driving',
+    },
+    {
+      label: 'Transit Time',
+      value: sac ? fmtMin(sac.transit_minutes) : '...',
+      color: '#202020',
+      sub: sac ? `${sac.transfers} transfer · ${sac.walk_minutes} min walk` : '—',
+    },
+    {
+      label: 'Drive Time',
+      value: sac ? fmtMin(sac.drive_minutes) : '...',
+      color: '#2b9a66',
+      sub: 'same trip, by car',
+    },
+    {
+      label: 'Time Waiting',
+      value: sac ? `${sac.wait_pct}%` : '...',
+      color: '#202020',
+      sub: 'of the trip is standing still',
+    },
   ]
 
   const mobile = cols === '1fr 1fr'
