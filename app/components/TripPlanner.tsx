@@ -244,7 +244,7 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
       if (!originCoord) { setError('Could not find origin — try selecting from the dropdown.'); setLoading(false); return }
       if (!destCoord)   { setError('Could not find destination — try selecting from the dropdown.'); setLoading(false); return }
 
-      const res = await fetch('/api/route', {
+      const res = await fetch('/api/trip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
