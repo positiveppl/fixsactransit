@@ -249,6 +249,7 @@ export default function TransitCanvas() {
   const [lastUpdate, setLastUpdate] = useState('')
   const [fetchError, setFetchError] = useState(false)
   const [showNarrative, setShowNarrative] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
 
   const fetchVehicles = useCallback(async () => {
     try {
@@ -322,6 +323,21 @@ export default function TransitCanvas() {
   }, [])
 
   useEffect(() => {
+  const timer = setTimeout(() => {
+    setShowNarrative(true)
+  }, 2500)
+
+  return () => clearTimeout(timer)
+}, [])
+
+  useEffect(() => {
+  const wasDismissed = localStorage.getItem('narrativeDismissed')
+
+  if (wasDismissed) {
+    setDismissed(true)
+    return
+  }
+
   const timer = setTimeout(() => {
     setShowNarrative(true)
   }, 2500)
@@ -538,11 +554,29 @@ export default function TransitCanvas() {
         lineHeight: 1.5,
 
         // ✨ fade goes HERE
-        opacity: showNarrative ? 1 : 0,
+        opacity: showNarrative && !dismissed ? 1 : 0,
+        pointerEvents: showNarrative && !dismissed ? 'auto' : 'none',
         transform: showNarrative ? 'translateY(0px)' : 'translateY(10px)',
         transition: 'opacity 1.4s ease, transform 1.4s ease',
       }}
->
+>       
+        <div
+          onClick={() => {
+            setDismissed(true)
+            localStorage.setItem('narrativeDismissed', 'true')
+          }}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 10,
+            cursor: 'pointer',
+            fontSize: 12,
+            color: 'rgba(255,255,255,0.5)',
+          }}
+        >
+          ×
+        </div>
+
         <p style={{
           fontSize: 11,
           color: 'rgba(255,255,255,0.55)',
