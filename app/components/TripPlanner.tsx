@@ -128,7 +128,7 @@ function AddressInput({ value, onChange, onSelect, placeholder, icon, inputStyle
         value={value}
         onChange={e => { onChange(e.target.value); }}
         onKeyDown={handleKeyDown}
-        onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
+        onFocus={() => suggestions.length > 0 && setShowDropdown(false)}
         placeholder={placeholder}
         style={inputStyle}
         autoComplete="off"
