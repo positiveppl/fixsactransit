@@ -7,3 +7,7 @@ dist/
 .next/
 .DS_Store
 out/
+.DS_Store
+.vercel
+tsconfig.tsbuildinfo
+tsconfig.tsbuildinfo
