@@ -108,8 +108,16 @@ export default {
 // Returns: { transit_minutes, drive_minutes, pain_factor, walk_minutes, wait_minutes, transfers, origin_address, dest_address }
 async function handleSeedPain(env) {
   const CITIES_TO_SEED = [
-    { id: 'sacramento', originLat: 38.5961, originLon: -121.3882, destLat: 38.5762, destLon: -121.4934 },
-    { id: 'san_francisco', originLat: 37.7599, originLon: -122.4148, destLat: 37.7946, destLon: -122.3999 },
+    // Sacramento: Howe & Arden (suburban arterial) → City Hall (~7km)
+    { id: 'sacramento',    originLat: 38.5961, originLon: -121.3882, destLat: 38.5762, destLon: -121.4934 },
+    // San Francisco: Outer Sunset (19th Ave & Judah St) → City Hall (~8km)
+    { id: 'san_francisco', originLat: 37.7614, originLon: -122.4786, destLat: 37.7793, destLon: -122.4193 },
+    // Los Angeles: Reseda Blvd & Ventura Blvd, Van Nuys (suburban arterial) → City Hall (~18km)
+    { id: 'los_angeles',   originLat: 34.1680, originLon: -118.5355, destLat: 34.0537, destLon: -118.2427 },
+    // San Diego: El Cajon Blvd & 54th St, City Heights (suburban arterial) → City Hall (~7km)
+    { id: 'san_diego',     originLat: 32.7524, originLon: -117.0982, destLat: 32.7157, destLon: -117.1564 },
+    // San Jose: Stevens Creek Blvd & Winchester Blvd (suburban arterial) → City Hall (~8km)
+    { id: 'san_jose',      originLat: 37.3230, originLon: -121.9530, destLat: 37.3382, destLon: -121.8863 },
   ];
 
   const results = [];
