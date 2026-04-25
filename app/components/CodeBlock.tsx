@@ -18,7 +18,7 @@ export default function CodeBlock({ sac }: { sac: CityScore | null }) {
       <div style={{ padding: '20px 24px', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, lineHeight: 1.6, color: '#e8e8e8', overflowX: 'auto' }}>
         <span style={{ color: '#6a737d' }}>// Transit Reality Calculator — Sacramento</span><br />
         <span style={{ color: '#79b8ff' }}>const</span> trip = {'{'}<br />
-        &nbsp;&nbsp;<span style={{ color: '#9ecbff' }}>origin</span>: <span style={{ color: '#f97583' }}>"Oak Park, Sacramento"</span>,<br />
+        &nbsp;&nbsp;<span style={{ color: '#9ecbff' }}>origin</span>: <span style={{ color: '#f97583' }}>"Howe & Arden, Sacramento"</span>,<br />
         &nbsp;&nbsp;<span style={{ color: '#9ecbff' }}>destination</span>: <span style={{ color: '#f97583' }}>"Downtown Sacramento"</span>,<br />
         &nbsp;&nbsp;<span style={{ color: '#9ecbff' }}>transit_minutes</span>: <span style={{ color: '#f8e045' }}>{transit}</span>,<br />
         &nbsp;&nbsp;<span style={{ color: '#9ecbff' }}>drive_minutes</span>: <span style={{ color: '#f8e045' }}>{drive}</span>,<br />
