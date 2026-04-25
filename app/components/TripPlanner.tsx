@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { CityScore, fmtMin } from '../lib/api'
+import html2canvas from 'html2canvas'
+import ShareTicket from './ShareTicket'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
 
@@ -195,6 +197,7 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
   const [result, setResult]     = useState<RouteResult | null>(null)
   const [cols, setCols]         = useState('1fr 1fr')
   const mobile = cols === '1fr'
+  const ticketRef = useRef<HTMLDivElement>(null!)
 
   useEffect(() => {
     const check = () => setCols(window.innerWidth < 900 ? '1fr' : '1fr 1fr')
@@ -290,11 +293,46 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
     setLoading(false)
   }
 
-  function shareOnX() {
-    const text = result
-      ? `My Sacramento commute:\n\n🚍 ${fmtMin(transitMin)} by transit\n🚗 ${fmtMin(driveMin)} by car\n\n${pain}× slower — and we're the state capital.\n\nfixsactransit.org`
-      : `Sacramento transit is ${pain}× slower than driving. We're the state capital. This should not be acceptable.\n\nfixsactransit.org`
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank', 'width=600,height=400')
+  async function shareImage() {
+    if (!ticketRef.current) return
+    ticketRef.current.style.visibility = 'visible'
+    const canvas = await html2canvas(ticketRef.current, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: null,
+      logging: false,
+    })
+    ticketRef.current.style.visibility = 'hidden'
+    const blob = await new Promise<Blob>(resolve =>
+      canvas.toBlob(b => resolve(b!), 'image/png')
+    )
+    const file = new File([blob], 'my-commute-pain-ratio.png', { type: 'image/png' })
+    const shareText = `My Sacramento commute is ${pain}× slower by transit than driving. fixsactransit.org`
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], text: shareText })
+    } else {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'my-commute-pain-ratio.png'; a.click()
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  async function shareOnX() {
+    if (ticketRef.current) {
+      ticketRef.current.style.visibility = 'visible'
+      const canvas = await html2canvas(ticketRef.current, { scale: 2, useCORS: true, backgroundColor: null, logging: false })
+      ticketRef.current.style.visibility = 'hidden'
+      const blob = await new Promise(resolve => canvas.toBlob(b => resolve(b), 'image/png'))
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'my-commute-pain-ratio.png'; a.click()
+      URL.revokeObjectURL(url)
+    }
+    const text = `My Sacramento commute is ${pain}× slower by transit than driving — and we're the state capital.\n\nfixsactransit.org #fixsactransit`
+    setTimeout(() => {
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank', 'width=600,height=400')
+    }, 500)
   }
 
   const inputStyle: React.CSSProperties = {
@@ -458,13 +496,26 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
           </div>
 
           {done && (
-            <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: 10 }}>
-              <button onClick={shareOnX} style={{ flex: 1, background: '#ea2804', color: '#fff', border: 'none', borderRadius: 9999, padding: '11px 16px', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace' }}>Share on X</button>
-              <button onClick={() => navigator.clipboard.writeText('https://fixsactransit.org')} style={{ flex: 1, background: 'transparent', color: '#8d8d8d', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 9999, padding: '11px 16px', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace' }}>Copy Link</button>
+            <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={shareImage} style={{ flex: '1 1 auto', background: '#ea2804', color: '#fff', border: 'none', borderRadius: 9999, padding: '11px 16px', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace' }}>📸 Share Image</button>
+              <button onClick={shareOnX} title="Downloads image + opens X" style={{ flex: '1 1 auto', background: 'transparent', color: '#8d8d8d', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 9999, padding: '11px 16px', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'JetBrains Mono, monospace' }}>Post on X ↓</button>
             </div>
           )}
         </div>
       </div>
+
+      <ShareTicket
+        ticketRef={ticketRef}
+        origin={origin}
+        dest={dest}
+        transitMin={transitMin}
+        driveMin={driveMin}
+        pain={String(pain)}
+        walkMin={result?.walk_minutes ?? 0}
+        waitMin={waitMin}
+        waitPct={result?.wait_pct ?? 0}
+        transfers={result?.transfers ?? 0}
+      />
     </section>
   )
 }
