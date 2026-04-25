@@ -114,9 +114,82 @@ This project exists to measure that gap, visualize it, and make it undeniable.
 
 ---
 
+## Running This for Your City
+
+The core infrastructure is city-agnostic. If your city publishes a GTFS feed (most US transit agencies do), you can fork this and have it running for your city in a few hours.
+
+### What you need
+
+- A GTFS feed for your transit agency — find yours at [transitfeeds.com](https://transitfeeds.com) or your agency's developer portal
+- A [Cloudflare account](https://cloudflare.com) (free tier is sufficient)
+- A [Mapbox token](https://mapbox.com) (free tier is sufficient)
+- Node.js 18+ and [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
+
+### Step 1 — Get your GTFS data
+
+Download your agency's GTFS zip and place it in the `scripts/` directory. Most agencies publish this publicly — search `[your city] transit GTFS feed`.
+
+### Step 2 — Build the transit graph
+
+```bash
+node scripts/build-graph-local.mjs --gtfs ./scripts/your-city-gtfs.zip
+```
+
+This builds the routing graph (stops + edges) and writes it to Cloudflare KV.
+
+### Step 3 — Update city-specific config
+
+**`app/components/TripPlanner.tsx`** — update the Mapbox proximity bias to your city's coordinates:
+```ts
+url.searchParams.set('proximity', '-121.4944,38.5816') // ← swap for your city center
+```
+
+**`app/components/Sidebar.tsx`** — update the city comparison list:
+```ts
+const CA_CITY_IDS = ['san_francisco', 'los_angeles', ...] // ← swap for your region
+```
+
+**`shared/cities.js`** — add your city's baseline metrics or remove the comparison section entirely.
+
+**`app/components/ShareTicket.tsx`** — the SVG skyline is Sacramento-specific. Swap it for your city or remove it.
+
+**Copy throughout** — search for "Sacramento", "SacRT", and "State Capital" and update to your city.
+
+### Step 4 — Deploy workers
+
+```bash
+# Set your secrets
+wrangler secret put MAPBOX_TOKEN
+wrangler secret put GOOGLE_ROUTES_API_KEY  # for drive time calculation
+
+# Deploy
+npm run deploy:all
+```
+
+### Step 5 — Set environment variables
+
+In your Cloudflare Pages project settings, add:
+```
+NEXT_PUBLIC_MAPBOX_TOKEN=your_token
+NEXT_PUBLIC_API_BASE=your-api-gateway.workers.dev
+```
+
+### Pain Ratio benchmarks by city
+
+If you run this for your city, open a PR adding your results to `shared/cities.js`. The goal is to build a national picture of transit health — city by city.
+
+| City | Pain Ratio | Status |
+|---|---|---|
+| Sacramento, CA | ~4.6× | ✅ Live |
+| Your city | ? | 🔜 Add yours |
+
+---
+
 ## Contributing
 
 Issues and PRs welcome. If you live in Sacramento and want to help — open an issue, reach out, or just share your pain ratio.
+
+Built something for your city? Open a PR — we want to see it.
 
 ---
 
