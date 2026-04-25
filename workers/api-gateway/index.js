@@ -76,6 +76,27 @@ export default {
       return json({ raw_length: raw?.length, preview: raw?.slice(0, 200) });
     }
 
+    if (path === "/api/debug/google") {
+      const key = env.GOOGLE_MAPS_KEY;
+      if (!key) return json({ error: 'GOOGLE_MAPS_KEY not found in env' });
+      const now = new Date();
+      const daysUntilMonday = (8 - now.getUTCDay()) % 7 || 7;
+      const monday = new Date(now);
+      monday.setUTCDate(now.getUTCDate() + daysUntilMonday);
+      monday.setUTCHours(15, 0, 0, 0);
+      const departureTime = monday.toISOString();
+      const origin      = { location: { latLng: { latitude: 38.5961, longitude: -121.3882 } } };
+      const destination = { location: { latLng: { latitude: 38.5762, longitude: -121.4934 } } };
+      const headers     = { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key };
+      const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+        method: 'POST',
+        headers: { ...headers, 'X-Goog-FieldMask': 'routes.duration,routes.legs.steps' },
+        body: JSON.stringify({ origin, destination, travelMode: 'TRANSIT', departureTime }),
+      });
+      const data = await res.json();
+      return json(data);
+    }
+
     return json({ error: "Not found", available: ["/api/scores", "/api/live/:cityId", "/api/status", "/api/route"] }, 404);
   },
 };
@@ -87,56 +108,30 @@ export default {
 // Returns: { transit_minutes, drive_minutes, pain_factor, walk_minutes, wait_minutes, transfers, origin_address, dest_address }
 async function handleSeedPain(env) {
   const CITIES_TO_SEED = [
-    { id: 'sacramento', originLat: 38.5516, originLon: -121.4685, destLat: 38.5802, destLon: -121.4931 },
+    { id: 'sacramento', originLat: 38.5961, originLon: -121.3882, destLat: 38.5762, destLon: -121.4934 },
     { id: 'san_francisco', originLat: 37.7599, originLon: -122.4148, destLat: 37.7946, destLon: -122.3999 },
   ];
 
   const results = [];
   for (const city of CITIES_TO_SEED) {
     try {
-      const stopMap = await env.TRANSIT_KV.get(`stops:${city.id}`, 'json');
-      if (!stopMap) { results.push({ city: city.id, status: 'no_stops' }); continue; }
-
-      const meta = await env.TRANSIT_KV.get(`meta:${city.id}`, 'json');
-      if (!meta) { results.push({ city: city.id, status: 'no_meta' }); continue; }
-
-      const originStops = findNearestStops(stopMap, city.originLat, city.originLon, 3);
-      const destStops   = findNearestStops(stopMap, city.destLat, city.destLon, 3);
-      if (!originStops.length || !destStops.length) { results.push({ city: city.id, status: 'no_stops_nearby' }); continue; }
-
-      const chunkList = Array.from({ length: meta.chunk_count }, (_, i) => i);
-      const allEdges = [];
-      await Promise.all(chunkList.map(async chunkId => {
-        const chunk = await env.TRANSIT_KV.get(`graph:${city.id}:chunk:${chunkId}`, 'json');
-        if (chunk) allEdges.push(...(Array.isArray(chunk) ? chunk : Object.values(chunk)));
-      }));
-
-      const DEPARTURE_SEC = 15 * 3600;
-      const result = dijkstra(allEdges, originStops, new Set(destStops.map(s => s.id)), DEPARTURE_SEC);
-      if (!result) { results.push({ city: city.id, status: 'no_route' }); continue; }
-
-      const transitMin = Math.round((result.arrivalTime - DEPARTURE_SEC) / 60);
-      const distKm     = haversineKm(city.originLat, city.originLon, city.destLat, city.destLon);
-      const driveMin   = Math.max(5, Math.round((distKm / 30) * 60));
-      const painFactor = Math.round((transitMin / driveMin) * 10) / 10;
-      const walkMin    = Math.round((result.walkSec || 0) / 60);
-      const waitMin    = Math.max(0, Math.round((transitMin - walkMin) * 0.4));
-      const waitPct    = Math.round((waitMin / transitMin) * 100);
+      const route = await googleRoute(city.originLat, city.originLon, city.destLat, city.destLon, env);
+      if (!route) { results.push({ city: city.id, status: 'no_route' }); continue; }
 
       const existing = await env.TRANSIT_KV.get(`city:${city.id}`, 'json') || {};
       const updated = {
         ...existing,
-        pain_factor:      painFactor,
-        transit_minutes:  transitMin,
-        drive_minutes:    driveMin,
-        walk_minutes:     walkMin,
-        wait_minutes:     waitMin,
-        wait_pct:         waitPct,
-        transfers:        result.transfers,
+        pain_factor:      route.painFactor,
+        transit_minutes:  route.transitMin,
+        drive_minutes:    route.driveMin,
+        walk_minutes:     route.walkMin,
+        wait_minutes:     route.waitMin,
+        wait_pct:         route.waitPct,
+        transfers:        route.transfers,
         pain_computed_at: new Date().toISOString(),
       };
       await env.TRANSIT_KV.put(`city:${city.id}`, JSON.stringify(updated));
-      results.push({ city: city.id, status: 'ok', pain_factor: painFactor });
+      results.push({ city: city.id, status: 'ok', pain_factor: route.painFactor, transit_minutes: route.transitMin, drive_minutes: route.driveMin });
     } catch (e) {
       results.push({ city: city.id, status: 'error', error: e.message });
     }
@@ -161,84 +156,224 @@ async function handleRoute(request, env) {
   const city = CITIES.find(c => c.id === cityId);
   if (!city) return json({ error: `Unknown city: ${cityId}` }, 404);
 
-  // Load stop map
+  // Try Google first
+  const route = await googleRoute(originLat, originLon, destLat, destLon, env);
+  if (route) {
+    return json({
+      transit_minutes: route.transitMin,
+      drive_minutes:   route.driveMin,
+      pain_factor:     route.painFactor,
+      walk_minutes:    route.walkMin,
+      wait_minutes:    route.waitMin,
+      wait_pct:        route.waitPct,
+      transfers:       route.transfers,
+      origin_stop:     route.originStop,
+      dest_stop:       route.destStop,
+      legs:            route.legs,
+      source:          'google',
+    });
+  }
+
+  // Fallback: Dijkstra
   const stopMap = await env.TRANSIT_KV.get(`stops:${cityId}`, "json");
   if (!stopMap) return json({ error: "No graph data for this city" }, 503);
 
-  // Find nearest stops to origin and destination
   const originStops = findNearestStops(stopMap, originLat, originLon, 3);
   const destStops   = findNearestStops(stopMap, destLat, destLon, 3);
 
   if (!originStops.length || !destStops.length) {
-  const outOfArea = !originStops.length && !destStops.length
-    ? 'Neither location'
-    : !originStops.length ? 'Your origin' : 'Your destination';
-  return json({
-    error: `${outOfArea} doesn't appear to be within SacRT's service area. Elk Grove, Folsom, and Roseville use separate transit agencies not yet in our data.`,
-    hint: 'Try locations within Sacramento, Citrus Heights, Rancho Cordova, or North Highlands.'
-  }, 404);
-}
+    const outOfArea = !originStops.length && !destStops.length
+      ? 'Neither location'
+      : !originStops.length ? 'Your origin' : 'Your destination';
+    return json({
+      error: `${outOfArea} doesn't appear to be within SacRT's service area.`,
+      hint: 'Try locations within Sacramento, Citrus Heights, Rancho Cordova, or North Highlands.'
+    }, 404);
+  }
 
-// Load ALL chunks — chunks are hashed by stop_id (not geography),
-// so partial loading almost never produces a connected path.
-// Sacramento has 6 chunks × ~2MB = ~12MB, well within Worker limits.
-const meta = await env.TRANSIT_KV.get(`meta:${cityId}`, "json");
-if (!meta) return json({ error: "No graph metadata" }, 503);
+  const meta = await env.TRANSIT_KV.get(`meta:${cityId}`, "json");
+  if (!meta) return json({ error: "No graph metadata" }, 503);
 
-const chunkList = Array.from({ length: meta.chunk_count }, (_, i) => i);
-
+  const chunkList = Array.from({ length: meta.chunk_count }, (_, i) => i);
   const allEdges = [];
   await Promise.all(
     chunkList.map(async chunkId => {
       const chunk = await env.TRANSIT_KV.get(`graph:${cityId}:chunk:${chunkId}`, "json");
-      if (chunk) {
-        const edges = Array.isArray(chunk) ? chunk : Object.values(chunk);
-        allEdges.push(...edges);
-      }
+      if (chunk) allEdges.push(...(Array.isArray(chunk) ? chunk : Object.values(chunk)));
     })
   );
 
-  // 8am PDT departure
-  const now = new Date();
-const DEPARTURE_SEC = 8 * 3600; // 8am — matches GTFS schedule window in graph
-
+  const DEPARTURE_SEC = 8 * 3600;
   const result = dijkstra(allEdges, originStops, new Set(destStops.map(s => s.id)), DEPARTURE_SEC);
 
   if (!result) {
     return json({
-      error: "No route found — limited graph loaded for performance. Try addresses closer to major bus corridors.",
+      error: "No route found. Try addresses closer to major bus corridors.",
       origin_stops: originStops.map(s => ({ id: s.id, name: s.name, distM: Math.round(s.distM) })),
-      dest_stops: destStops.map(s => ({ id: s.id, name: s.name, distM: Math.round(s.distM) })),
-      chunks_loaded: chunkList.length,
+      dest_stops:   destStops.map(s => ({ id: s.id, name: s.name, distM: Math.round(s.distM) })),
     }, 404);
   }
 
-  const transitMin = Math.round((result.arrivalTime - DEPARTURE_SEC) / 60);
+  const legs     = buildLegs(result, stopMap, originStops, destStops, DEPARTURE_SEC);
+  const totalSec = result.arrivalTime - DEPARTURE_SEC;
+  const walkSec  = legs.filter(l => l.type === 'walk').reduce((s, l) => s + l.durationSec, 0);
+  const waitSec  = legs.filter(l => l.type === 'wait').reduce((s, l) => s + l.durationSec, 0);
+  const transitMin = Math.round(totalSec / 60);
   const distKm     = haversineKm(originLat, originLon, destLat, destLon);
-  const driveMin   = Math.max(5, Math.round((distKm / 30) * 60));
+  const driveMin   = Math.max(5, Math.round((distKm / 40) * 60));
   const painFactor = Math.round((transitMin / driveMin) * 10) / 10;
-  const walkMin    = Math.round((result.walkSec || 0) / 60);
-  const waitMin    = Math.max(0, Math.round((transitMin - walkMin) * 0.4));
-  const waitPct    = Math.round((waitMin / transitMin) * 100);
 
   return json({
     transit_minutes: transitMin,
     drive_minutes:   driveMin,
     pain_factor:     painFactor,
-    walk_minutes:    walkMin,
-    wait_minutes:    waitMin,
-    wait_pct:        waitPct,
+    walk_minutes:    Math.round(walkSec / 60),
+    wait_minutes:    Math.round(waitSec / 60),
+    wait_pct:        totalSec > 0 ? Math.round((waitSec / totalSec) * 100) : 0,
     transfers:       result.transfers,
-    chunks_loaded:   chunkList.length,
-    origin_stop:     originStops[0]?.name,
-    dest_stop:       destStops[0]?.name,
+    origin_stop:     stopMap[result.originStopId]?.name ?? originStops[0]?.name,
+    dest_stop:       stopMap[result.destStopId]?.name   ?? destStops[0]?.name,
+    legs,
+    source:          'dijkstra',
   });
 }
 
-// ── Routing ───────────────────────────────────────────────────────────────────
+// ── Google Routes API ─────────────────────────────────────────────────────────
+
+async function googleRoute(originLat, originLon, destLat, destLon, env) {
+  const key = env.GOOGLE_MAPS_KEY;
+  if (!key) return null;
+
+  // Next Monday at 8am Pacific (UTC-7) as ISO string
+  const now = new Date();
+  const daysUntilMonday = (8 - now.getUTCDay()) % 7 || 7;
+  const monday = new Date(now);
+  monday.setUTCDate(now.getUTCDate() + daysUntilMonday);
+  monday.setUTCHours(15, 0, 0, 0); // 8am PDT = 15:00 UTC
+  const departureTime = monday.toISOString();
+
+  const origin      = { location: { latLng: { latitude: originLat, longitude: originLon } } };
+  const destination = { location: { latLng: { latitude: destLat,   longitude: destLon   } } };
+  const headers     = { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key };
+
+  // Transit and driving in parallel
+  const [transitRes, driveRes] = await Promise.all([
+    fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: { ...headers, 'X-Goog-FieldMask': 'routes.duration,routes.legs.steps' },
+      body: JSON.stringify({ origin, destination, travelMode: 'TRANSIT', departureTime }),
+    }),
+    fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: { ...headers, 'X-Goog-FieldMask': 'routes.duration' },
+      body: JSON.stringify({ origin, destination, travelMode: 'DRIVE', departureTime, routingPreference: 'TRAFFIC_AWARE' }),
+    }),
+  ]);
+
+  if (!transitRes.ok || !driveRes.ok) {
+    console.error('Routes API HTTP error:', transitRes.status, driveRes.status);
+    return null;
+  }
+
+  const [transitData, driveData] = await Promise.all([transitRes.json(), driveRes.json()]);
+
+  if (!transitData.routes?.length || !driveData.routes?.length) {
+    console.error('Routes API no routes:', JSON.stringify(transitData).slice(0, 400), JSON.stringify(driveData).slice(0, 200));
+    return null;
+  }
+
+  const transitSec = parseInt(transitData.routes[0].duration);
+  const driveSec   = parseInt(driveData.routes[0].duration);
+  const transitMin = Math.round(transitSec / 60);
+  const driveMin   = Math.round(driveSec / 60);
+  const painFactor = Math.round((transitMin / driveMin) * 10) / 10;
+
+  // Parse legs from Routes API step format
+  // Walk steps are broken into sub-segments (turn-by-turn) — merge consecutive ones
+  const legs = [];
+  let walkSec    = 0;
+  let waitSec    = 0;
+  let transfers  = -1;
+  let originStop = null;
+  let destStop   = null;
+
+  // Merge consecutive WALK steps into one, keep first instruction as label
+  const mergedSteps = [];
+  for (const step of transitData.routes[0]?.legs?.[0]?.steps ?? []) {
+    if (step.travelMode === 'WALK') {
+      const last = mergedSteps[mergedSteps.length - 1];
+      if (last?.travelMode === 'WALK') {
+        last.staticDuration = `${parseInt(last.staticDuration) + parseInt(step.staticDuration)}s`;
+        last.distanceMeters = (last.distanceMeters || 0) + (step.distanceMeters || 0);
+      } else {
+        mergedSteps.push({ ...step });
+      }
+    } else {
+      mergedSteps.push(step);
+    }
+  }
+
+  for (const step of mergedSteps) {
+    const dur = parseInt(step.staticDuration || '0s');
+
+    if (step.travelMode === 'WALK') {
+      walkSec += dur;
+      const instruction = step.navigationInstruction?.instructions?.split('\n')[0] ?? '';
+      legs.push({ type: 'walk', durationSec: dur, distanceM: step.distanceMeters, label: instruction || undefined });
+
+    } else if (step.travelMode === 'TRANSIT') {
+      const td      = step.transitDetails;
+      const depStop = td?.stopDetails?.departureStop?.name;
+      const arrStop = td?.stopDetails?.arrivalStop?.name;
+      const depTime = td?.stopDetails?.departureTime ? new Date(td.stopDetails.departureTime).getTime() / 1000 : null;
+
+      if (!originStop) originStop = depStop;
+      destStop = arrStop;
+      transfers++;
+
+      // Wait = actual bus departure time minus our arrival at that stop
+      if (depTime) {
+        const elapsedSec = legs.reduce((s, l) => s + l.durationSec, 0);
+        const arriveAtStop = monday.getTime() / 1000 + elapsedSec;
+        const wait = Math.max(0, depTime - arriveAtStop);
+        if (wait > 60) {
+          waitSec += wait;
+          legs.push({ type: 'wait', at: depStop, durationSec: Math.round(wait) });
+        }
+      }
+
+      const vehicleType = td?.transitLine?.vehicle?.type ?? '';
+      const isRail = ['HEAVY_RAIL', 'COMMUTER_TRAIN', 'SUBWAY', 'TRAM', 'LIGHT_RAIL'].includes(vehicleType);
+      legs.push({
+        type:        isRail ? 'rail' : 'bus',
+        from:        depStop,
+        to:          arrStop,
+        durationSec: dur,
+        route:       td?.transitLine?.nameShort || td?.transitLine?.name,
+      });
+    }
+  }
+
+  return {
+    transitMin,
+    driveMin,
+    painFactor,
+    walkMin:   Math.round(walkSec / 60),
+    waitMin:   Math.round(waitSec / 60),
+    waitPct:   transitSec > 0 ? Math.round((waitSec / transitSec) * 100) : 0,
+    transfers: Math.max(0, transfers),
+    originStop,
+    destStop,
+    legs,
+  };
+}
+
+
 
 const TRANSFER_PENALTY_SEC = 300;
+const WALK_LEG_PENALTY_SEC = 120;  // phantom cost per walk leg — discourages chaining stops instead of waiting for a bus
 const MAX_WALK_TOTAL_SEC   = 2700;  // 45 min — covers 3km walk
+const MAX_WALK_LEGS        = 4;     // max discrete walk segments (first mile + last mile + 2 transfers)
 const MAX_JOURNEY_SEC      = 10800;
 const WALK_SPEED_MPS       = 1.33;
 
@@ -297,71 +432,177 @@ function dijkstra(allEdges, originStops, destStopIds, departureTimeSec) {
     adj.get(edge.from).push(edge);
   }
 
-  const dist      = new Map();
-  const prevRoute = new Map();
-  const heap      = new MinHeap();
+  // best[stopId] = { arrivalTime, cost, prev, prevEdge, walkSec, walkLegs, transfers, currentRoute }
+  const best     = new Map();
+  const heap     = new MinHeap();
   const startTime = departureTimeSec;
 
   for (const stop of originStops) {
     const walkSec = Math.round(stop.distM / WALK_SPEED_MPS);
     const arrTime = startTime + walkSec;
-    dist.set(stop.id, arrTime);
-    heap.push({ cost: arrTime, stopId: stop.id, walkSec, transfers: 0 });
+    const initCost = arrTime + WALK_LEG_PENALTY_SEC; // first-mile walk costs one penalty
+    best.set(stop.id, { arrivalTime: arrTime, cost: initCost, prev: null, prevEdge: null, walkSec, walkLegs: 1, transfers: 0, currentRoute: null });
+    heap.push({ cost: initCost, stopId: stop.id, walkSec, walkLegs: 1, transfers: 0 });
   }
 
-  let best = null;
+  let bestDestId = null;
 
   while (heap.size > 0) {
-    const { cost, stopId, walkSec, transfers } = heap.pop();
-
-    if (cost > (dist.get(stopId) ?? Infinity) + 1) continue;
+    const { cost, stopId, walkSec, walkLegs, transfers } = heap.pop();
+    const state = best.get(stopId);
+    if (!state || cost > state.cost) continue;
     if (cost - startTime > MAX_JOURNEY_SEC) break;
 
     if (destStopIds.has(stopId)) {
-      if (!best || cost < best.arrivalTime) {
-        best = { arrivalTime: cost, stopId, walkSec, transfers };
-      }
+      if (!bestDestId || state.arrivalTime < best.get(bestDestId).arrivalTime) bestDestId = stopId;
       continue;
     }
 
     for (const edge of (adj.get(stopId) || [])) {
-      let arrival      = cost;
+      let arrivalTime  = state.arrivalTime;
+      let newCost      = cost;
       let newWalkSec   = walkSec;
+      let newWalkLegs  = walkLegs;
       let newTransfers = transfers;
+      let newRoute     = state.currentRoute;
 
       if (edge.type === 'walk') {
         const dur = edge.duration ?? edge.durationSec ?? 120;
         newWalkSec += dur;
         if (newWalkSec > MAX_WALK_TOTAL_SEC) continue;
-        arrival += dur;
+        newWalkLegs++;
+        if (newWalkLegs > MAX_WALK_LEGS) continue; // hard cap on walk segments
+        arrivalTime += dur;
+        newCost     += dur + WALK_LEG_PENALTY_SEC; // real time + phantom penalty
       } else if (edge.type === 'bus' || edge.type === 'rail') {
         if (edge.depart === undefined || edge.arrive === undefined) continue;
-        if (edge.depart < cost) continue;
-        if (edge.depart - cost > 7200) continue;
-        arrival = edge.arrive;
-        const lastRoute = prevRoute.get(stopId);
-        if (lastRoute && lastRoute !== edge.route) {
+        if (edge.depart < state.arrivalTime) continue;
+        if (edge.depart - state.arrivalTime > 7200) continue;
+        arrivalTime = edge.arrive;
+        newCost     = cost + (edge.arrive - state.arrivalTime); // actual elapsed time
+        if (state.currentRoute && state.currentRoute !== edge.route) {
           newTransfers++;
-          arrival += TRANSFER_PENALTY_SEC;
+          arrivalTime += TRANSFER_PENALTY_SEC;
+          newCost     += TRANSFER_PENALTY_SEC;
         }
+        newRoute = edge.route ?? null;
       } else if (edge.type === 'transfer') {
         const dur = edge.duration ?? edge.durationSec ?? 180;
-        arrival += dur + TRANSFER_PENALTY_SEC;
+        arrivalTime += dur + TRANSFER_PENALTY_SEC;
+        newCost     += dur + TRANSFER_PENALTY_SEC;
         newTransfers++;
       } else {
         continue;
       }
 
-      const existing = dist.get(edge.to);
-      if (existing === undefined || arrival < existing) {
-        dist.set(edge.to, arrival);
-        prevRoute.set(edge.to, edge.route ?? null);
-        heap.push({ cost: arrival, stopId: edge.to, walkSec: newWalkSec, transfers: newTransfers });
+      const existing = best.get(edge.to);
+      if (!existing || newCost < existing.cost) {
+        best.set(edge.to, { arrivalTime, cost: newCost, prev: stopId, prevEdge: edge, walkSec: newWalkSec, walkLegs: newWalkLegs, transfers: newTransfers, currentRoute: newRoute });
+        heap.push({ cost: newCost, stopId: edge.to, walkSec: newWalkSec, walkLegs: newWalkLegs, transfers: newTransfers });
       }
     }
   }
 
-  return best;
+  if (!bestDestId) return null;
+  const destState = best.get(bestDestId);
+
+  // Walk back to find which origin stop was used
+  let cur = bestDestId;
+  const visited = new Set();
+  while (best.get(cur)?.prev !== null) {
+    if (visited.has(cur)) break;
+    visited.add(cur);
+    const next = best.get(cur).prev;
+    if (next === cur) break;
+    cur = next;
+  }
+  const originStopId = cur;
+
+  return { arrivalTime: destState.arrivalTime, walkSec: destState.walkSec, transfers: destState.transfers, originStopId, destStopId: bestDestId, best };
+}
+
+function buildLegs(result, stopMap, originStops, destStops, startTimeSec) {
+  const legs = [];
+  const { best, originStopId, destStopId } = result;
+
+  // Reconstruct path from dest back to origin
+  const pathEdges = [];
+  const visited = new Set();
+  let cur = destStopId;
+  while (best.get(cur)?.prev !== null) {
+    if (visited.has(cur)) break; // cycle guard
+    visited.add(cur);
+    const state = best.get(cur);
+    pathEdges.unshift({ from: state.prev, edge: state.prevEdge });
+    cur = state.prev;
+  }
+
+  // First-mile walk
+  const originStop = originStops.find(s => s.id === originStopId) ?? originStops[0];
+  const firstWalkSec = Math.round((originStop?.distM ?? 200) / WALK_SPEED_MPS);
+  let currentTime = startTimeSec;
+
+  if (firstWalkSec > 30) {
+    legs.push({ type: 'walk', to: stopMap[originStopId]?.name ?? originStopId, durationSec: firstWalkSec, distanceM: Math.round(originStop?.distM ?? 200) });
+    currentTime += firstWalkSec;
+  }
+
+  // Transit legs
+  let currentRoute = null;
+  let currentLegFrom = stopMap[originStopId]?.name ?? originStopId;
+  let currentLegDepart = 0;
+
+  for (const { from, edge } of pathEdges) {
+    if (edge.type === 'walk' || edge.type === 'transfer') {
+      if (currentRoute) {
+        legs.push({ type: 'bus', from: currentLegFrom, to: stopMap[from]?.name ?? from, durationSec: currentTime - currentLegDepart });
+        currentRoute = null;
+      }
+      const waitSec = Math.max(0, (edge.depart ?? currentTime) - currentTime);
+      if (waitSec > 60) {
+        legs.push({ type: 'wait', at: stopMap[from]?.name ?? from, durationSec: waitSec });
+        currentTime += waitSec;
+      }
+      const dur = edge.duration ?? edge.durationSec ?? 120;
+      legs.push({ type: 'walk', from: stopMap[from]?.name ?? from, to: stopMap[edge.to]?.name ?? edge.to, durationSec: dur });
+      currentTime += dur;
+    } else {
+      // bus/rail
+      if (!currentRoute) {
+        const waitSec = Math.max(0, (edge.depart ?? currentTime) - currentTime);
+        if (waitSec > 60) {
+          legs.push({ type: 'wait', at: stopMap[from]?.name ?? from, durationSec: waitSec });
+        }
+        currentRoute     = edge.route ?? 'bus';
+        currentLegFrom   = stopMap[from]?.name ?? from;
+        currentLegDepart = edge.depart ?? currentTime;
+        currentTime      = edge.arrive;
+      } else if (edge.route && edge.route !== currentRoute) {
+        legs.push({ type: 'bus', from: currentLegFrom, to: stopMap[from]?.name ?? from, durationSec: currentTime - currentLegDepart });
+        currentRoute     = edge.route;
+        currentLegFrom   = stopMap[from]?.name ?? from;
+        currentLegDepart = edge.depart ?? currentTime;
+        currentTime      = edge.arrive;
+      } else {
+        currentTime = edge.arrive;
+      }
+    }
+  }
+
+  // Flush final transit leg
+  if (currentRoute && pathEdges.length) {
+    const lastEdge = pathEdges[pathEdges.length - 1].edge;
+    legs.push({ type: 'bus', from: currentLegFrom, to: stopMap[lastEdge.to]?.name ?? lastEdge.to, durationSec: currentTime - currentLegDepart });
+  }
+
+  // Last-mile walk
+  const destStop = destStops.find(s => s.id === destStopId) ?? destStops[0];
+  const lastWalkSec = Math.round((destStop?.distM ?? 200) / WALK_SPEED_MPS);
+  if (lastWalkSec > 30) {
+    legs.push({ type: 'walk', from: stopMap[destStopId]?.name ?? destStopId, to: 'Destination', durationSec: lastWalkSec, distanceM: Math.round(destStop?.distM ?? 200) });
+  }
+
+  return legs;
 }
 
 // ── Score handlers (unchanged) ────────────────────────────────────────────────
