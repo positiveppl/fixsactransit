@@ -28,7 +28,14 @@ export default function Sidebar({ sac, allCities }: { sac: CityScore | null; all
         setDepState('error')
         return
       }
-      setDepartures(data.departures.slice(0, 8))
+      const seen = new Set<string>()
+      const deduped = data.departures.filter((d: any) => {
+        const key = `${d.route}|${d.stop_name}|${d.minutes}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      setDepartures(deduped.slice(0, 5))
       setDepState('loaded')
     } catch (e: any) {
       setDepError(e?.code === 1 ? 'Location access denied.' : 'Could not load departures.')
