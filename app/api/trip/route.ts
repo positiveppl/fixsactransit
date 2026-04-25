@@ -98,41 +98,61 @@ const MAX_WALK_TOTAL_SEC   = 1200
 const MAX_JOURNEY_SEC      = 10800
 const WALK_SPEED_MPS       = 1.33
 
+interface DijkstraState {
+  arrivalTime: number
+  prev: string | null
+  prevEdge: Edge | null
+  walkSec: number
+  transfers: number
+  currentRoute: string | null
+}
+
+interface DijkstraResult {
+  arrivalTime: number
+  walkSec: number
+  transfers: number
+  originStopId: string
+  destStopId: string
+  best: Map<string, DijkstraState>
+}
+
 function dijkstra(
   allEdges: Edge[],
   originStops: StopWithDist[],
   destStopIds: Set<string>,
   departureTimeSec: number
-): { arrivalTime: number; walkSec: number; transfers: number } | null {
+): DijkstraResult | null {
   const adj = new Map<string, Edge[]>()
   for (const edge of allEdges) {
     if (!adj.has(edge.from)) adj.set(edge.from, [])
     adj.get(edge.from)!.push(edge)
   }
 
-  const dist      = new Map<string, number>()
-  const prevRoute = new Map<string, string | null>()
-  const heap      = new MinHeap()
+  const best    = new Map<string, DijkstraState>()
+  const heap    = new MinHeap()
   const startTime = departureTimeSec
 
+  // seed origin stops — each already accounts for the walk from actual origin
+  const originStopIds = new Map<string, number>() // stopId → walkSec
   for (const stop of originStops) {
     const walkSec = Math.round(stop.distM / WALK_SPEED_MPS)
     const arrTime = startTime + walkSec
-    dist.set(stop.id, arrTime)
+    best.set(stop.id, { arrivalTime: arrTime, prev: null, prevEdge: null, walkSec, transfers: 0, currentRoute: null })
     heap.push({ cost: arrTime, stopId: stop.id, walkSec, transfers: 0 })
+    originStopIds.set(stop.id, walkSec)
   }
 
-  let best: { arrivalTime: number; walkSec: number; transfers: number } | null = null
+  let bestDestId: string | null = null
 
   while (heap.size > 0) {
     const { cost, stopId, walkSec, transfers } = heap.pop()
-
-    if (cost > (dist.get(stopId) ?? Infinity) + 1) continue
+    const state = best.get(stopId)
+    if (!state || cost > state.arrivalTime + 1) continue
     if (cost - startTime > MAX_JOURNEY_SEC) break
 
     if (destStopIds.has(stopId)) {
-      if (!best || cost < best.arrivalTime) {
-        best = { arrivalTime: cost, walkSec, transfers }
+      if (!bestDestId || cost < best.get(bestDestId)!.arrivalTime) {
+        bestDestId = stopId
       }
       continue
     }
@@ -141,6 +161,7 @@ function dijkstra(
       let arrival      = cost
       let newWalkSec   = walkSec
       let newTransfers = transfers
+      let newRoute     = state.currentRoute
 
       if (edge.type === 'walk') {
         const dur = edge.duration ?? edge.durationSec ?? 120
@@ -152,11 +173,11 @@ function dijkstra(
         if (edge.depart < cost) continue
         if (edge.depart - cost > 7200) continue
         arrival = edge.arrive
-        const lastRoute = prevRoute.get(stopId)
-        if (lastRoute && lastRoute !== edge.route) {
+        if (state.currentRoute && state.currentRoute !== edge.route) {
           newTransfers++
           arrival += TRANSFER_PENALTY_SEC
         }
+        newRoute = edge.route ?? null
       } else if (edge.type === 'transfer') {
         const dur = edge.duration ?? edge.durationSec ?? 180
         arrival += dur + TRANSFER_PENALTY_SEC
@@ -165,16 +186,141 @@ function dijkstra(
         continue
       }
 
-      const existing = dist.get(edge.to)
-      if (existing === undefined || arrival < existing) {
-        dist.set(edge.to, arrival)
-        prevRoute.set(edge.to, edge.route ?? null)
+      const existing = best.get(edge.to)
+      if (!existing || arrival < existing.arrivalTime) {
+        best.set(edge.to, {
+          arrivalTime: arrival,
+          prev: stopId,
+          prevEdge: edge,
+          walkSec: newWalkSec,
+          transfers: newTransfers,
+          currentRoute: newRoute,
+        })
         heap.push({ cost: arrival, stopId: edge.to, walkSec: newWalkSec, transfers: newTransfers })
       }
     }
   }
 
-  return best
+  if (!bestDestId) return null
+  const destState = best.get(bestDestId)!
+
+  // find which origin stop this route used
+  let cur = bestDestId
+  while (best.get(cur)?.prev !== null) cur = best.get(cur)!.prev!
+  const originStopId = cur
+
+  return {
+    arrivalTime: destState.arrivalTime,
+    walkSec: destState.walkSec,
+    transfers: destState.transfers,
+    originStopId,
+    destStopId: bestDestId,
+    best,
+  }
+}
+
+// ── Leg reconstruction ────────────────────────────────────────────────────────
+
+interface Leg {
+  type: 'walk' | 'wait' | 'bus' | 'rail'
+  from?: string
+  to?: string
+  at?: string
+  durationSec: number
+  distanceM?: number
+}
+
+function buildLegs(
+  result: DijkstraResult,
+  stopMap: Record<string, Stop>,
+  originStops: StopWithDist[],
+  destStops: StopWithDist[],
+  startTimeSec: number
+): Leg[] {
+  const legs: Leg[] = []
+  const { best, originStopId, destStopId } = result
+
+  // Reconstruct path edges from dest back to origin
+  const pathEdges: { from: string; edge: Edge; arriveAt: number }[] = []
+  let cur = destStopId
+  while (best.get(cur)?.prev !== null) {
+    const state = best.get(cur)!
+    pathEdges.unshift({ from: state.prev!, edge: state.prevEdge!, arriveAt: state.arrivalTime })
+    cur = state.prev!
+  }
+
+  // First-mile walk
+  const originStop = originStops.find(s => s.id === originStopId) ?? originStops[0]
+  const firstWalkSec = Math.round((originStop?.distM ?? 200) / WALK_SPEED_MPS)
+  let currentTime = startTimeSec
+
+  if (firstWalkSec > 30) {
+    legs.push({ type: 'walk', to: stopMap[originStopId]?.name ?? originStopId, durationSec: firstWalkSec, distanceM: Math.round(originStop?.distM ?? 200) })
+    currentTime += firstWalkSec
+  }
+
+  // Transit legs — merge consecutive same-trip edges, insert waits between legs
+  let currentRoute: string | null = null
+  let currentLegStart = currentTime
+  let currentLegFrom  = stopMap[originStopId]?.name ?? originStopId
+  let currentLegDepart = 0
+
+  for (const { from, edge, arriveAt } of pathEdges) {
+    if (edge.type === 'walk' || edge.type === 'transfer') {
+      // Flush transit leg if open
+      if (currentRoute) {
+        legs.push({ type: 'bus', from: currentLegFrom, to: stopMap[from]?.name ?? from, durationSec: currentTime - currentLegDepart })
+        currentRoute = null
+      }
+      // Wait if gap
+      const waitSec = Math.max(0, (edge.depart ?? currentTime) - currentTime)
+      if (waitSec > 60) {
+        legs.push({ type: 'wait', at: stopMap[from]?.name ?? from, durationSec: waitSec })
+        currentTime += waitSec
+      }
+      const dur = edge.duration ?? edge.durationSec ?? 120
+      legs.push({ type: 'walk', from: stopMap[from]?.name ?? from, to: stopMap[edge.to]?.name ?? edge.to, durationSec: dur, distanceM: Math.round(dur * WALK_SPEED_MPS) })
+      currentTime += dur
+    } else {
+      // Bus/rail
+      if (!currentRoute) {
+        // Wait before boarding
+        const waitSec = Math.max(0, (edge.depart ?? currentTime) - currentTime)
+        if (waitSec > 60) {
+          legs.push({ type: 'wait', at: stopMap[from]?.name ?? from, durationSec: waitSec })
+        }
+        currentRoute     = edge.route ?? 'bus'
+        currentLegFrom   = stopMap[from]?.name ?? from
+        currentLegDepart = edge.depart ?? currentTime
+        currentTime      = edge.arrive ?? arriveAt
+      } else if (edge.route && edge.route !== currentRoute) {
+        // Transfer — flush current leg and start new one
+        legs.push({ type: 'bus', from: currentLegFrom, to: stopMap[from]?.name ?? from, durationSec: currentTime - currentLegDepart })
+        currentRoute     = edge.route
+        currentLegFrom   = stopMap[from]?.name ?? from
+        currentLegDepart = edge.depart ?? currentTime
+        currentTime      = edge.arrive ?? arriveAt
+      } else {
+        currentTime = edge.arrive ?? arriveAt
+      }
+    }
+    currentLegStart = currentTime
+  }
+
+  // Flush final transit leg
+  if (currentRoute && pathEdges.length) {
+    const last = pathEdges[pathEdges.length - 1]
+    legs.push({ type: 'bus', from: currentLegFrom, to: stopMap[last.edge.to]?.name ?? last.edge.to, durationSec: currentTime - currentLegDepart })
+  }
+
+  // Last-mile walk
+  const destStop = destStops.find(s => s.id === destStopId) ?? destStops[0]
+  const lastWalkSec = Math.round((destStop?.distM ?? 200) / WALK_SPEED_MPS)
+  if (lastWalkSec > 30) {
+    legs.push({ type: 'walk', from: stopMap[destStopId]?.name ?? destStopId, to: 'Destination', durationSec: lastWalkSec, distanceM: Math.round(destStop?.distM ?? 200) })
+  }
+
+  return legs
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -249,13 +395,23 @@ export async function POST(request: NextRequest) {
     }, { status: 404 })
   }
 
-  const transitMin = Math.round((result.arrivalTime - DEPARTURE_SEC) / 60)
+  const legs = buildLegs(result, stopMap, originStops, destStops, DEPARTURE_SEC)
+
+  const walkSec    = legs.filter(l => l.type === 'walk').reduce((s, l) => s + l.durationSec, 0)
+  const waitSec    = legs.filter(l => l.type === 'wait').reduce((s, l) => s + l.durationSec, 0)
+  const busSec     = legs.filter(l => l.type === 'bus' || l.type === 'rail').reduce((s, l) => s + l.durationSec, 0)
+  const totalSec   = result.arrivalTime - DEPARTURE_SEC
+
+  const transitMin = Math.round(totalSec / 60)
+  const walkMin    = Math.round(walkSec / 60)
+  const waitMin    = Math.round(waitSec / 60)
   const distKm     = haversineKm(originLat, originLon, destLat, destLon)
   const driveMin   = Math.max(5, Math.round((distKm / 30) * 60))
   const painFactor = Math.round((transitMin / driveMin) * 10) / 10
-  const walkMin    = Math.round((result.walkSec || 0) / 60)
-  const waitMin    = Math.max(0, Math.round((transitMin - walkMin) * 0.4))
-  const waitPct    = Math.round((waitMin / transitMin) * 100)
+  const waitPct    = totalSec > 0 ? Math.round((waitSec / totalSec) * 100) : 0
+
+  const originStopName = stopMap[result.originStopId]?.name ?? originStops[0]?.name
+  const destStopName   = stopMap[result.destStopId]?.name   ?? destStops[0]?.name
 
   return NextResponse.json({
     transit_minutes: transitMin,
@@ -265,8 +421,9 @@ export async function POST(request: NextRequest) {
     wait_minutes:    waitMin,
     wait_pct:        waitPct,
     transfers:       result.transfers,
-    origin_stop:     originStops[0]?.name,
-    dest_stop:       destStops[0]?.name,
+    origin_stop:     originStopName,
+    dest_stop:       destStopName,
     chunks_loaded:   meta.chunk_count,
+    legs,
   })
 }

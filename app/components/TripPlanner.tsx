@@ -11,6 +11,15 @@ interface Suggestion {
   full_address?: string
 }
 
+interface RouteLeg {
+  type: 'walk' | 'wait' | 'bus' | 'rail'
+  from?: string
+  to?: string
+  at?: string
+  durationSec: number
+  distanceM?: number
+}
+
 interface RouteResult {
   transit_minutes: number
   drive_minutes: number
@@ -21,6 +30,7 @@ interface RouteResult {
   transfers: number
   origin_stop: string
   dest_stop: string
+  legs?: RouteLeg[]
 }
 
 // ── Mapbox Search Box API ─────────────────────────────────────────────────────
@@ -404,19 +414,30 @@ export default function TripPlanner({ sac }: { sac: CityScore | null }) {
           </div>
 
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '14px 24px' }}>
-            {result ? (
-              [
-                { icon: '🚶', label: `Walk to ${result.origin_stop}`, type: 'walk', dur: result.walk_minutes },
-                { icon: '⏸',  label: 'Wait for bus', type: 'wait', dur: result.wait_minutes },
-                { icon: '🚍', label: `Bus to ${result.dest_stop}`, type: 'bus', dur: Math.max(1, result.transit_minutes - result.walk_minutes - result.wait_minutes) },
-              ].map((s, i, arr) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: i < arr.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', fontSize: 11, color: s.type === 'wait' ? '#ea2804' : '#8d8d8d', fontFamily: 'JetBrains Mono, monospace' }}>
-                  <span style={{ width: 18, textAlign: 'center' }}>{s.icon}</span>
-                  <span style={{ flex: 1 }}>{s.label}</span>
-                  <span style={{ fontSize: 10, color: '#4e4e4e' }}>{s.dur}m</span>
-                </div>
-              ))
-            ) : (
+            {result ? (() => {
+              const legs = result.legs && result.legs.length > 0 ? result.legs : [
+                { type: 'walk' as const, to: result.origin_stop, durationSec: result.walk_minutes * 60 },
+                { type: 'wait' as const, at: result.origin_stop, durationSec: result.wait_minutes * 60 },
+                { type: 'bus'  as const, to: result.dest_stop,   durationSec: Math.max(60, (result.transit_minutes - result.walk_minutes - result.wait_minutes) * 60) },
+              ]
+              const LEG_META: Record<string, { icon: string; color: string; label: (l: RouteLeg) => string }> = {
+                walk: { icon: '🚶', color: '#8d8d8d', label: l => `Walk to ${l.to || 'stop'}${l.distanceM ? ` (${Math.round(l.distanceM)}m)` : ''}` },
+                wait: { icon: '⏸',  color: '#ea2804', label: l => `Wait at ${l.at || l.from || 'stop'}` },
+                bus:  { icon: '🚍', color: '#8d8d8d', label: l => `Bus to ${l.to || 'destination'}` },
+                rail: { icon: '🚊', color: '#8d8d8d', label: l => `Rail to ${l.to || 'destination'}` },
+              }
+              return legs.map((leg, i) => {
+                const meta = LEG_META[leg.type] ?? LEG_META.bus
+                const durMin = Math.round(leg.durationSec / 60)
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: i < legs.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', fontSize: 11, color: meta.color, fontFamily: 'JetBrains Mono, monospace' }}>
+                    <span style={{ width: 18, textAlign: 'center' }}>{meta.icon}</span>
+                    <span style={{ flex: 1 }}>{meta.label(leg)}</span>
+                    <span style={{ fontSize: 10, color: '#4e4e4e' }}>{durMin}m</span>
+                  </div>
+                )
+              })
+            })() : (
               [
                 { icon: '🚶', label: 'Walk to nearest stop', type: 'walk' },
                 { icon: '⏸',  label: 'Wait for bus', type: 'wait' },

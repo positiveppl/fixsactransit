@@ -6,3 +6,6 @@ compatibility_date = "2026-04-17"
 binding = "TRANSIT_KV"
 id = "aac52192fcae4d898c2eb6d25ea8f644"
 preview_id = "0362e6c438444bde8eeab2b64a4cd37a"
+
+[triggers]
+crons = ["0 15 * * 1"]

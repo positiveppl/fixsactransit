@@ -8,7 +8,7 @@
 //   GET  /api/status              → pipeline health check
 //   POST /api/route               → trip planner routing
 
-import { CITIES } from "../../shared/cities.js";
+import { CITIES, BOUNDS, normalize, computeScore } from "../../shared/cities.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +17,10 @@ const CORS = {
 };
 
 export default {
+  async scheduled(event, env, ctx) {
+    await handleSeedPain(env);
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -127,6 +131,7 @@ async function handleSeedPain(env) {
       if (!route) { results.push({ city: city.id, status: 'no_route' }); continue; }
 
       const existing = await env.TRANSIT_KV.get(`city:${city.id}`, 'json') || {};
+      const painScore = normalize(route.painFactor, BOUNDS.pain, 'lower_better');
       const updated = {
         ...existing,
         pain_factor:      route.painFactor,
@@ -136,8 +141,13 @@ async function handleSeedPain(env) {
         wait_minutes:     route.waitMin,
         wait_pct:         route.waitPct,
         transfers:        route.transfers,
+        pain_score:       painScore,
         pain_computed_at: new Date().toISOString(),
       };
+      // Recompute overall score if frequency + coverage data exists
+      if (existing.avg_headway_minutes != null && existing.coverage_pct != null) {
+        updated.score = computeScore(existing.avg_headway_minutes, existing.coverage_pct, route.painFactor);
+      }
       await env.TRANSIT_KV.put(`city:${city.id}`, JSON.stringify(updated));
       results.push({ city: city.id, status: 'ok', pain_factor: route.painFactor, transit_minutes: route.transitMin, drive_minutes: route.driveMin });
     } catch (e) {
