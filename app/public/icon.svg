@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a1628"/>
+      <stop offset="60%" stop-color="#0f2040"/>
+      <stop offset="100%" stop-color="#1a3558"/>
+    </linearGradient>
+    <linearGradient id="river" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d2240"/>
+      <stop offset="100%" stop-color="#081525"/>
+    </linearGradient>
+    <linearGradient id="textbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#081525"/>
+      <stop offset="100%" stop-color="#050e18"/>
+    </linearGradient>
+    <clipPath id="round">
+      <rect width="1024" height="1024" rx="220" ry="220"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <!-- Sky -->
+    <rect width="1024" height="1024" fill="url(#sky)"/>
+
+    <!-- Stars -->
+    <circle cx="120" cy="80"  r="3" fill="#fff" opacity="0.8"/>
+    <circle cx="200" cy="140" r="2" fill="#fff" opacity="0.5"/>
+    <circle cx="320" cy="60"  r="2.5" fill="#fff" opacity="0.7"/>
+    <circle cx="500" cy="90"  r="2" fill="#fff" opacity="0.4"/>
+    <circle cx="650" cy="50"  r="3" fill="#fff" opacity="0.6"/>
+    <circle cx="780" cy="120" r="2" fill="#fff" opacity="0.5"/>
+    <circle cx="880" cy="70"  r="2.5" fill="#fff" opacity="0.7"/>
+    <circle cx="960" cy="160" r="2" fill="#fff" opacity="0.4"/>
+    <circle cx="60"  cy="200" r="2" fill="#fff" opacity="0.5"/>
+    <circle cx="430" cy="130" r="1.5" fill="#fff" opacity="0.6"/>
+    <circle cx="700" cy="180" r="2" fill="#fff" opacity="0.4"/>
+    <circle cx="150" cy="300" r="1.5" fill="#fff" opacity="0.3"/>
+    <circle cx="840" cy="220" r="2" fill="#fff" opacity="0.5"/>
+
+    <!-- Moon -->
+    <circle cx="820" cy="140" r="58" fill="#e8dfc0" opacity="0.95"/>
+    <circle cx="835" cy="128" r="42" fill="#d4c9a0" opacity="0.25"/>
+
+    <!-- ── BUILDINGS (background, muted blue) ── -->
+    <!-- Far left -->
+    <rect x="30"  y="380" width="70"  height="290" fill="#152a45" rx="2"/>
+    <rect x="30"  y="340" width="50"  height="300" fill="#1a3355" rx="2"/>
+    <!-- Left cluster -->
+    <rect x="90"  y="310" width="55"  height="360" fill="#152a45" rx="2"/>
+    <rect x="140" y="360" width="45"  height="310" fill="#1a3050" rx="2"/>
+    <rect x="178" y="290" width="65"  height="380" fill="#172e4e" rx="2"/>
+
+    <!-- Center tall towers -->
+    <rect x="350" y="200" width="80"  height="470" fill="#1a3255" rx="2"/>
+    <rect x="420" y="250" width="60"  height="420" fill="#152a45" rx="2"/>
+    <rect x="470" y="220" width="90"  height="450" fill="#1e3860" rx="2"/>
+    <rect x="550" y="270" width="55"  height="400" fill="#152a45" rx="2"/>
+    <rect x="595" y="240" width="70"  height="430" fill="#1a3255" rx="2"/>
+
+    <!-- Right cluster -->
+    <rect x="720" y="320" width="60"  height="350" fill="#172e4e" rx="2"/>
+    <rect x="770" y="360" width="50"  height="310" fill="#1a3050" rx="2"/>
+    <rect x="810" y="290" width="65"  height="380" fill="#152a45" rx="2"/>
+    <rect x="870" y="350" width="55"  height="320" fill="#1a3255" rx="2"/>
+    <rect x="920" y="380" width="70"  height="290" fill="#152a45" rx="2"/>
+    <rect x="960" y="340" width="64"  height="330" fill="#172e4e" rx="2"/>
+
+    <!-- Antenna on main tower -->
+    <rect x="388" y="130" width="6"   height="72"  fill="#2a4a70"/>
+    <circle cx="391" cy="128" r="8"   fill="#2a4a70"/>
+
+    <!-- Building windows (warm yellow + cool blue) -->
+    <!-- Center tower windows -->
+    <rect x="360" y="215" width="12" height="10" fill="#f0c060" opacity="0.9" rx="1"/>
+    <rect x="380" y="215" width="12" height="10" fill="#7ab0d8" opacity="0.7" rx="1"/>
+    <rect x="400" y="215" width="12" height="10" fill="#f0c060" opacity="0.6" rx="1"/>
+    <rect x="360" y="235" width="12" height="10" fill="#7ab0d8" opacity="0.5" rx="1"/>
+    <rect x="380" y="235" width="12" height="10" fill="#f0c060" opacity="0.8" rx="1"/>
+    <rect x="360" y="255" width="12" height="10" fill="#f0c060" opacity="0.7" rx="1"/>
+    <rect x="400" y="255" width="12" height="10" fill="#7ab0d8" opacity="0.6" rx="1"/>
+
+    <rect x="480" y="235" width="14" height="11" fill="#f0c060" opacity="0.9" rx="1"/>
+    <rect x="502" y="235" width="14" height="11" fill="#7ab0d8" opacity="0.6" rx="1"/>
+    <rect x="524" y="235" width="14" height="11" fill="#f0c060" opacity="0.5" rx="1"/>
+    <rect x="480" y="258" width="14" height="11" fill="#7ab0d8" opacity="0.7" rx="1"/>
+    <rect x="502" y="258" width="14" height="11" fill="#f0c060" opacity="0.8" rx="1"/>
+    <rect x="480" y="281" width="14" height="11" fill="#f0c060" opacity="0.6" rx="1"/>
+    <rect x="524" y="281" width="14" height="11" fill="#7ab0d8" opacity="0.5" rx="1"/>
+
+    <rect x="608" y="255" width="12" height="10" fill="#f0c060" opacity="0.8" rx="1"/>
+    <rect x="628" y="255" width="12" height="10" fill="#7ab0d8" opacity="0.6" rx="1"/>
+    <rect x="648" y="255" width="12" height="10" fill="#f0c060" opacity="0.7" rx="1"/>
+    <rect x="608" y="278" width="12" height="10" fill="#7ab0d8" opacity="0.5" rx="1"/>
+    <rect x="628" y="278" width="12" height="10" fill="#f0c060" opacity="0.9" rx="1"/>
+
+    <!-- Left building windows -->
+    <rect x="100" y="325" width="10" height="9" fill="#f0c060" opacity="0.7" rx="1"/>
+    <rect x="118" y="325" width="10" height="9" fill="#7ab0d8" opacity="0.5" rx="1"/>
+    <rect x="188" y="305" width="12" height="10" fill="#f0c060" opacity="0.8" rx="1"/>
+    <rect x="208" y="305" width="12" height="10" fill="#7ab0d8" opacity="0.6" rx="1"/>
+    <rect x="188" y="328" width="12" height="10" fill="#f0c060" opacity="0.6" rx="1"/>
+    <rect x="228" y="305" width="12" height="10" fill="#f0c060" opacity="0.5" rx="1"/>
+
+    <!-- Right building windows -->
+    <rect x="730" y="335" width="11" height="9" fill="#f0c060" opacity="0.7" rx="1"/>
+    <rect x="748" y="335" width="11" height="9" fill="#7ab0d8" opacity="0.5" rx="1"/>
+    <rect x="820" y="305" width="12" height="10" fill="#f0c060" opacity="0.8" rx="1"/>
+    <rect x="840" y="305" width="12" height="10" fill="#7ab0d8" opacity="0.6" rx="1"/>
+    <rect x="820" y="328" width="12" height="10" fill="#f0c060" opacity="0.5" rx="1"/>
+
+    <!-- ── TOWER BRIDGE ── -->
+    <!-- Road deck -->
+    <rect x="100" y="630" width="824" height="22" fill="#e8a030" rx="2"/>
+
+    <!-- Left tower base + body -->
+    <rect x="168" y="490" width="68" height="162" fill="#e8a030" rx="2"/>
+    <!-- Left tower upper section -->
+    <rect x="176" y="430" width="52" height="68"  fill="#d89028" rx="2"/>
+    <!-- Left tower cap / pointed top -->
+    <polygon points="176,430 228,430 220,385 184,385" fill="#d89028"/>
+    <rect x="192" y="368" width="20" height="20" fill="#c07820" rx="1"/>
+    <polygon points="192,368 212,368 202,348" fill="#b06810"/>
+    <!-- Left tower windows -->
+    <rect x="182" y="500" width="14" height="16" fill="#c8e8f0" opacity="0.6" rx="1"/>
+    <rect x="208" y="500" width="14" height="16" fill="#c8e8f0" opacity="0.6" rx="1"/>
+    <rect x="182" y="530" width="14" height="16" fill="#c8e8f0" opacity="0.5" rx="1"/>
+    <rect x="208" y="530" width="14" height="16" fill="#c8e8f0" opacity="0.5" rx="1"/>
+    <!-- Left tower arch openings -->
+    <rect x="188" y="448" width="28" height="35" fill="#0f2040" rx="4"/>
+
+    <!-- Right tower base + body -->
+    <rect x="788" y="490" width="68" height="162" fill="#e8a030" rx="2"/>
+    <!-- Right tower upper section -->
+    <rect x="796" y="430" width="52" height="68"  fill="#d89028" rx="2"/>
+    <!-- Right tower cap -->
+    <polygon points="796,430 848,430 840,385 800,385" fill="#d89028"/>
+    <rect x="812" y="368" width="20" height="20" fill="#c07820" rx="1"/>
+    <polygon points="812,368 832,368 822,348" fill="#b06810"/>
+    <!-- Right tower windows -->
+    <rect x="802" y="500" width="14" height="16" fill="#c8e8f0" opacity="0.6" rx="1"/>
+    <rect x="828" y="500" width="14" height="16" fill="#c8e8f0" opacity="0.6" rx="1"/>
+    <rect x="802" y="530" width="14" height="16" fill="#c8e8f0" opacity="0.5" rx="1"/>
+    <rect x="828" y="530" width="14" height="16" fill="#c8e8f0" opacity="0.5" rx="1"/>
+    <!-- Right tower arch -->
+    <rect x="808" y="448" width="28" height="35" fill="#0f2040" rx="4"/>
+
+    <!-- Bridge cables - crossing X pattern -->
+    <line x1="202" y1="380" x2="512" y2="632" stroke="#e8a030" stroke-width="5" opacity="0.9"/>
+    <line x1="202" y1="380" x2="680" y2="632" stroke="#e8a030" stroke-width="3.5" opacity="0.7"/>
+    <line x1="822" y1="380" x2="512" y2="632" stroke="#e8a030" stroke-width="5" opacity="0.9"/>
+    <line x1="822" y1="380" x2="344" y2="632" stroke="#e8a030" stroke-width="3.5" opacity="0.7"/>
+
+    <!-- Vertical suspenders -->
+    <line x1="300" y1="540" x2="300" y2="630" stroke="#e8a030" stroke-width="2.5" opacity="0.7"/>
+    <line x1="380" y1="510" x2="380" y2="630" stroke="#e8a030" stroke-width="2.5" opacity="0.7"/>
+    <line x1="460" y1="492" x2="460" y2="630" stroke="#e8a030" stroke-width="2.5" opacity="0.7"/>
+    <line x1="512" y1="488" x2="512" y2="630" stroke="#e8a030" stroke-width="2.5" opacity="0.7"/>
+    <line x1="564" y1="492" x2="564" y2="630" stroke="#e8a030" stroke-width="2.5" opacity="0.7"/>
+    <line x1="644" y1="510" x2="644" y2="630" stroke="#e8a030" stroke-width="2.5" opacity="0.7"/>
+    <line x1="724" y1="540" x2="724" y2="630" stroke="#e8a030" stroke-width="2.5" opacity="0.7"/>
+
+    <!-- ── RIVER ── -->
+    <rect x="0" y="652" width="1024" height="160" fill="url(#river)"/>
+    <!-- Ripple lines -->
+    <line x1="80"  y1="678" x2="280" y2="678" stroke="#1e4060" stroke-width="3" opacity="0.5"/>
+    <line x1="350" y1="700" x2="680" y2="700" stroke="#1e4060" stroke-width="3" opacity="0.4"/>
+    <line x1="720" y1="678" x2="960" y2="678" stroke="#1e4060" stroke-width="3" opacity="0.5"/>
+    <line x1="150" y1="720" x2="420" y2="720" stroke="#1e4060" stroke-width="2" opacity="0.3"/>
+    <line x1="550" y1="735" x2="900" y2="735" stroke="#1e4060" stroke-width="2" opacity="0.3"/>
+    <!-- Bridge reflection -->
+    <rect x="100" y="652" width="824" height="8" fill="#e8a030" opacity="0.2"/>
+    <rect x="168" y="652" width="68" height="30" fill="#e8a030" opacity="0.08"/>
+    <rect x="788" y="652" width="68" height="30" fill="#e8a030" opacity="0.08"/>
+
+    <!-- Trees left -->
+    <ellipse cx="58"  cy="648" rx="68" ry="52" fill="#0a1e14"/>
+    <ellipse cx="30"  cy="660" rx="48" ry="40" fill="#081810"/>
+    <!-- Trees right -->
+    <ellipse cx="966" cy="648" rx="68" ry="52" fill="#0a1e14"/>
+    <ellipse cx="994" cy="660" rx="48" ry="40" fill="#081810"/>
+
+    <!-- ── TEXT BAND ── -->
+    <rect x="0" y="760" width="1024" height="264" fill="url(#textbg)"/>
+    <!-- Subtle top border line -->
+    <rect x="0" y="760" width="1024" height="2" fill="#e8a030" opacity="0.4"/>
+
+    <!-- FIX SAC -->
+    <text x="512" y="878"
+      font-family="Arial Black, Impact, sans-serif"
+      font-size="168"
+      font-weight="900"
+      fill="#ffffff"
+      text-anchor="middle"
+      letter-spacing="-2">FIX SAC</text>
+
+    <!-- TRANSIT -->
+    <text x="512" y="968"
+      font-family="Arial Black, Impact, sans-serif"
+      font-size="96"
+      font-weight="400"
+      fill="#9ab0c8"
+      text-anchor="middle"
+      letter-spacing="22">TRANSIT</text>
+
+    <!-- Decorative lines flanking TRANSIT -->
+    <rect x="80"  y="920" width="180" height="2" fill="#9ab0c8" opacity="0.4"/>
+    <rect x="764" y="920" width="180" height="2" fill="#9ab0c8" opacity="0.4"/>
+  </g>
+</svg>
