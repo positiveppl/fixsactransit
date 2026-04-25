@@ -84,6 +84,7 @@ function AddressInput({ value, onChange, onSelect, placeholder, icon, inputStyle
   const [activeIdx, setActiveIdx] = useState(-1)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const justSelectedRef = useRef(false)
 
   const fetchSuggestions = useCallback(async (q: string) => {
     const results = await getSuggestions(q)
@@ -94,12 +95,15 @@ function AddressInput({ value, onChange, onSelect, placeholder, icon, inputStyle
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    // Don't re-fetch after a selection — user picked something, we're done
+    if (justSelectedRef.current) {
+      justSelectedRef.current = false
+      return
+    }
     if (value.length < 2) {
-      debounceRef.current = setTimeout(() => {
-        setSuggestions([])
-        setShowDropdown(false)
-      }, 0)
-      return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+      setSuggestions([])
+      setShowDropdown(false)
+      return
     }
     debounceRef.current = setTimeout(() => fetchSuggestions(value), 250)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
@@ -125,9 +129,10 @@ function AddressInput({ value, onChange, onSelect, placeholder, icon, inputStyle
   }
 
   function handleSelect(s: Suggestion) {
-    onChange(s.name + (s.place_formatted ? `, ${s.place_formatted}` : ''))
+    justSelectedRef.current = true
     setSuggestions([])
     setShowDropdown(false)
+    onChange(s.name + (s.place_formatted ? `, ${s.place_formatted}` : ''))
     onSelect(s)
   }
 
@@ -138,7 +143,7 @@ function AddressInput({ value, onChange, onSelect, placeholder, icon, inputStyle
         value={value}
         onChange={e => { onChange(e.target.value); }}
         onKeyDown={handleKeyDown}
-        onFocus={() => suggestions.length > 0 && setShowDropdown(false)}
+        onFocus={() => { if (!justSelectedRef.current && suggestions.length > 0) setShowDropdown(true) }}
         placeholder={placeholder}
         style={inputStyle}
         autoComplete="off"
