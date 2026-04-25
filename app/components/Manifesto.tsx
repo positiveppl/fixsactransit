@@ -17,13 +17,13 @@ export default function Manifesto() {
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, position: 'relative' }}>
           <button
             onClick={() => {
-              const text = "Sacramento transit is 6.6× slower than driving. We're the state capital. This should not be acceptable. fixsactransit.org"
+              const text = "Sacramento transit is dramatically slower than driving. We're the state capital. This should not be acceptable.\n\nfixsactransit.org #fixsactransit"
               window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank', 'width=600,height=400')
             }}
             style={{ background: '#202020', color: '#fcfcfc', fontSize: 15, fontWeight: 600, padding: '12px 28px', borderRadius: 9999, border: 'none', cursor: 'pointer', outline: '4px solid #202020' }}>
             Share This
           </button>
-          <a href="https://github.com/positiveppl/fixsactransit" target="_blank" rel="noopener noreferrer"
+          <a href="https://github.com" target="_blank" rel="noopener noreferrer"
             style={{ background: 'transparent', color: '#fff', fontSize: 15, fontWeight: 600, padding: '12px 28px', borderRadius: 9999, border: '1px solid rgba(255,255,255,0.4)', cursor: 'pointer', textDecoration: 'none' }}>
             View on GitHub
           </a>
