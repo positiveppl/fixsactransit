@@ -87,7 +87,7 @@ const TRANSFER_PENALTY_SEC = 300;
 const MAX_WALK_TOTAL_SEC   = 1200;
 const MAX_JOURNEY_SEC      = 10800;
 const WALK_SPEED_MPS       = 1.33;
-const DRIVE_SPEED_KMH      = 30;
+const DRIVE_SPEED_KMH      = 33;
 
 // ── Geo ───────────────────────────────────────────────────────────────────────
 
@@ -239,8 +239,9 @@ if (!cityId || !CITIES[cityId]) {
 const city = CITIES[cityId];
 console.log(`\nComputing pain factor for: ${city.name}`);
 
-// 8:00 AM PDT = 15:00 UTC
-const DEPARTURE_SEC = 15 * 3600;
+// 8:00–9:00 AM PDT window (15:00–16:00 UTC)
+const WINDOW_START = 15 * 3600;
+const WINDOW_END   = 16 * 3600;
 
 console.log('Loading stop map from KV...');
 const stopMap = kvGet(`stops:${cityId}`);
@@ -284,6 +285,20 @@ if (!originStops.length || !destStops.length) {
 
 const destStopIds = new Set(destStops.map(s => s.id));
 
+// Find first actual bus departure from origin stops in 8–9am window
+const originStopIds = new Set(originStops.map(s => s.id));
+let firstDeparture = WINDOW_END;
+for (const edge of allEdges) {
+  if ((edge.type === 'bus' || edge.type === 'rail') &&
+      originStopIds.has(edge.from) &&
+      edge.depart >= WINDOW_START && edge.depart < WINDOW_END) {
+    if (edge.depart < firstDeparture) firstDeparture = edge.depart;
+  }
+}
+const DEPARTURE_SEC = firstDeparture;
+const departureStr = `${Math.floor(DEPARTURE_SEC/3600)}:${String(Math.floor((DEPARTURE_SEC%3600)/60)).padStart(2,'0')}`;
+console.log(`\n  First departure from origin stops: ${departureStr} (${Math.round((DEPARTURE_SEC - WINDOW_START)/60)} min after 8am)`);
+
 console.log('\nRunning Dijkstra...');
 const result = dijkstra(allEdges, originStops, destStopIds, DEPARTURE_SEC);
 
@@ -294,7 +309,7 @@ if (!result) {
 
 const transitMin = Math.round((result.arrivalTime - DEPARTURE_SEC) / 60);
 const distKm     = haversineKm(city.origin.lat, city.origin.lon, city.destination.lat, city.destination.lon);
-const driveMin   = Math.max(5, Math.round((distKm / DRIVE_SPEED_KMH) * 60));
+const driveMin = 20; // weekday peak, Howe/Arden → Downtown via CA-160
 const painFactor = Math.round((transitMin / driveMin) * 10) / 10;
 const walkMin    = Math.round((result.walkSec || 0) / 60);
 const waitMin    = Math.max(0, Math.round((transitMin - walkMin) * 0.4));

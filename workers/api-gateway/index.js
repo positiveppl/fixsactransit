@@ -113,7 +113,7 @@ export default {
 async function handleSeedPain(env) {
   const CITIES_TO_SEED = [
     // Sacramento: Howe & Arden (suburban arterial) → City Hall (~7km)
-    { id: 'sacramento',    originLat: 38.5961, originLon: -121.3882, destLat: 38.5762, destLon: -121.4934 },
+    { id: 'sacramento', originLat: 38.59611, originLon: -121.38819, destLat: 38.5762, destLon: -121.4934 },
     // San Francisco: Outer Sunset (19th Ave & Judah St) → City Hall (~8km)
     { id: 'san_francisco', originLat: 37.7614, originLon: -122.4786, destLat: 37.7793, destLon: -122.4193 },
     // Los Angeles: Reseda Blvd & Ventura Blvd, Van Nuys (suburban arterial) → City Hall (~18km)

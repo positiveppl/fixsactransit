@@ -14,9 +14,8 @@ export const CITIES = [
     rt_key_env: "SACRT_KEY",
     rail_feed: false,
     trip: {
-      // Oak Park to Downtown Sacramento — ~4 miles
-      origin: "38.5516,-121.4685",
-      destination: "38.5802,-121.4931",
+      origin: "38.5961,-121.3882",       // Arden & Howe
+      destination: "38.5762,-121.4931",  // City Hall
     },
   },
   {
