@@ -6,7 +6,7 @@
 
   <!-- Homepage — highest priority -->
   <url>
-    <loc>https://fixsactransit.com/</loc>
+    <loc>https://fixsactransit.org/</loc>
     <lastmod>2025-04-01</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
