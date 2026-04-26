@@ -31,7 +31,7 @@ export default function Manifesto() {
       </section>
 
       <footer style={{ background: '#fff', borderTop: '1px solid #e5e5e5', padding: '24px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#8d8d8d', fontFamily: 'JetBrains Mono, monospace', flexWrap: 'wrap', gap: 8 }}>
-        <span>Data: SacRT GTFS-RT (simulated) · Prototype · Built to make change.</span>
+        <span>Data: SacRT GTFS-RT (live) · Built to make change.</span>
         <span>fixsactransit.org</span>
       </footer>
     </>
