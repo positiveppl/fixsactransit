@@ -1,11 +1,11 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
-const SITE_URL = 'https://fixsactransit.com'
+const SITE_URL = 'https://fixsactransit.org'
 const SITE_NAME = 'Fix Sac Transit'
 const TITLE = 'Fix Sac Transit — Sacramento Transit Reality Check'
 const DESCRIPTION =
-  "Sacramento transit is 6.6× slower than driving. We track the Pain Ratio, Accessibility Gap, and Transit Viability Score for 12 major cities — because data should make you angry."
+  "How bad is Sacramento transit? We measure the Pain Ratio, Accessibility Gap, and Transit Viability Score across 12 major US cities — live data, updated daily."
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
