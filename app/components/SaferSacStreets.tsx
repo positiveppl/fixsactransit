@@ -176,21 +176,21 @@ export default function SaferSacStreets({
             <div style={label}>Avg headway</div>
             <div style={bigNum('#2b9a66')}>{PROJECTED_HEADWAY} min</div>
             <div style={{ ...mono, fontSize: 10, color: '#8d8d8d', marginTop: 4 }}>
-              est. ~{avgHeadwayMinutes - PROJECTED_HEADWAY} min reduction
+              est. ~{(avgHeadwayMinutes ?? CURRENT_HEADWAY) - PROJECTED_HEADWAY} min reduction
             </div>
           </div>
           <div style={{ marginBottom: 20 }}>
             <div style={label}>Frequency score</div>
             <div style={bigNum('#2b9a66')}>{projectedFreqScore.toFixed(1)}<span style={{ fontSize: 16, fontWeight: 400, color: '#8d8d8d' }}>/10</span></div>
             <div style={{ ...mono, fontSize: 10, color: '#2b9a66', marginTop: 4 }}>
-              +{(projectedFreqScore - frequencyScore).toFixed(1)} pts
+              +{(projectedFreqScore - (frequencyScore ?? 4.2)).toFixed(1)} pts
             </div>
           </div>
           <div>
             <div style={label}>Composite score</div>
             <div style={bigNum('#2b9a66')}>{projectedComposite}<span style={{ fontSize: 16, fontWeight: 400, color: '#8d8d8d' }}>/10</span></div>
             <div style={{ ...mono, fontSize: 10, color: '#2b9a66', marginTop: 4 }}>
-              +{(projectedComposite - compositeScore).toFixed(1)} pts
+              +{(projectedComposite - (compositeScore ?? 7.0)).toFixed(1)} pts
             </div>
           </div>
         </div>
