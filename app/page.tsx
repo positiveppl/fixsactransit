@@ -11,6 +11,7 @@ import TripPlanner from './components/TripPlanner'
 import Manifesto from './components/Manifesto'
 import TransitCanvas from './components/TransitCanvas'
 import { ContentGrid } from './components/ResponsiveGrid'
+import SaferSacStreets from './components/SaferSacStreets'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
 
@@ -82,7 +83,11 @@ export default function Page() {
           </div>
         </div>
       </section>
-
+      <SaferSacStreets
+        avgHeadwayMinutes={sac?.avg_headway_minutes ?? 28.3}
+        frequencyScore={sac?.frequency_score ?? 4.2}
+        compositeScore={parseFloat(sac?.score ?? '7.0')}
+      />
       <Manifesto />
     </main>
   )
