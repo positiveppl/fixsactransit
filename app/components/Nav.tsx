@@ -8,7 +8,7 @@ export default function Nav() {
       position: 'sticky', top: 0, background: '#ffffff', zIndex: 50,
     }}>
       <div style={{ fontFamily: 'Arial Black, Impact, ui-sans-serif', fontSize: 15, fontWeight: 900, letterSpacing: '0.06em', color: '#202020', textTransform: 'uppercase' }}>
-        Fix Sac Tranist
+        Fix Sac Transit
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
         <span style={{ fontSize: 14, color: '#646464', textDecoration: 'underline dotted #bbbbbb', textUnderlineOffset: 3, cursor: 'pointer' }}>
