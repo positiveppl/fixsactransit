@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Block API worker subdomains from being indexed via links
+# (these are not crawlable HTML pages)
+
+Sitemap: https://fixsactransit.com/sitemap.xml
