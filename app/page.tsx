@@ -12,6 +12,7 @@ import Manifesto from './components/Manifesto'
 import TransitCanvas from './components/TransitCanvas'
 import { ContentGrid } from './components/ResponsiveGrid'
 import SaferSacStreets from './components/SaferSacStreets'
+import BudgetComparison from './components/BudgetComparison'
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? ''
 
