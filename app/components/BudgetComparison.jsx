@@ -434,7 +434,14 @@ export default function BudgetComparison() {
         flexWrap: "wrap",
         gap: 4,
       }}>
-        <span>Source: Federal Transit Administration — National Transit Database, Report Year 2024</span>
+        <a
+          href="https://www.transit.dot.gov/ntd/data-product/2024-metrics"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "#444", textDecoration: "underline" }}
+        >
+          Source: Federal Transit Administration — National Transit Database, Report Year 2024
+        </a>
         <span>fixsactransit.org</span>
       </div>
     </div>
