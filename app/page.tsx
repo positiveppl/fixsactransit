@@ -88,6 +88,7 @@ export default function Page() {
         frequencyScore={sac?.frequency_score ?? 4.2}
         compositeScore={parseFloat(sac?.score ?? '7.0')}
       />
+      <BudgetComparison /> 
       <Manifesto />
     </main>
   )
